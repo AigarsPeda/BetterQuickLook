@@ -1,11 +1,12 @@
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Windows.Media.Imaging;
 
 namespace BetterQuickLook;
 
 internal static class ShellFileHandlers
 {
-    internal sealed record Handler(string Name, string DisplayName, bool Recommended);
+    internal sealed record Handler(string Name, string DisplayName, bool Recommended, BitmapSource? Icon = null);
     private static readonly Dictionary<string, Task<IReadOnlyList<Handler>>> CachedLists = new(StringComparer.OrdinalIgnoreCase);
 
     internal static Task<IReadOnlyList<Handler>> ListAsync(string extension)
@@ -42,7 +43,11 @@ internal static class ShellFileHandlers
                 var name = ReadString(handler.GetName);
                 var displayName = ReadString(handler.GetUIName);
                 if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(displayName) && seen.Add(name))
-                    result.Add(new Handler(name, displayName, handler.IsRecommended() == 0));
+                {
+                    var iconLocation = ReadIconLocation(handler);
+                    var icon = ProgramIcons.Extract(iconLocation.Path, iconLocation.Index) ?? ProgramIcons.Extract(name);
+                    result.Add(new Handler(name, displayName, handler.IsRecommended() == 0, icon));
+                }
             }
             finally { Marshal.ReleaseComObject(handler); }
         }
@@ -55,6 +60,19 @@ internal static class ShellFileHandlers
         (Path.IsPathFullyQualified(handler.Name) && Path.IsPathFullyQualified(name) &&
          string.Equals(Path.GetFileName(handler.Name), Path.GetFileName(name), StringComparison.OrdinalIgnoreCase) &&
          string.Equals(handler.DisplayName, displayName, StringComparison.OrdinalIgnoreCase));
+
+    internal static Task OpenAsync(string extension, string handlerName, string displayName, string filePath)
+    {
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var worker = new Thread(() =>
+        {
+            try { Open(extension, handlerName, displayName, filePath); completion.SetResult(true); }
+            catch (Exception error) { completion.SetException(error); }
+        }) { IsBackground = true, Name = "BetterQuickLook Open File" };
+        worker.SetApartmentState(ApartmentState.STA);
+        worker.Start();
+        return completion.Task;
+    }
 
     internal static void Open(string extension, string handlerName, string displayName, string filePath)
     {
@@ -106,6 +124,13 @@ internal static class ShellFileHandlers
     }
 
     private delegate int GetHandlerString(out IntPtr value);
+
+    private static (string? Path, int Index) ReadIconLocation(IAssocHandler handler)
+    {
+        if (handler.GetIconLocation(out var value, out var index) != 0) return (null, 0);
+        try { return (Marshal.PtrToStringUni(value), index); }
+        finally { Marshal.FreeCoTaskMem(value); }
+    }
 
     private static string? ReadString(GetHandlerString get)
     {

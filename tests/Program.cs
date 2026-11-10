@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
+using WpfImage = System.Windows.Controls.Image;
 using System.Windows.Controls.Primitives;
 using WpfScrollBar = System.Windows.Controls.Primitives.ScrollBar;
 using System.Windows.Threading;
@@ -152,7 +153,18 @@ internal static class Program
                 "Open With programs should have identifiers and display names");
             Check(handlers.Select(handler => handler.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() == handlers.Count,
                 "Open With menu should not repeat a program");
+            if (extension == ".png")
+            {
+                Check(handlers.Any(handler => handler.Icon is not null), "available image programs should include their icons");
+                var screenshot = handlers.FirstOrDefault(handler => handler.DisplayName == "BetterScreenShot");
+                if (screenshot is not null)
+                    Check(screenshot.Icon is not null, "BetterScreenShot should display its own program icon");
+            }
         }
+        var screenshotIcon = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+            "BetterScreenShot", "assets", "BetterScreenShot.ico");
+        if (File.Exists(screenshotIcon))
+            Check(ProgramIcons.Extract(screenshotIcon) is not null, "BetterScreenShot's icon asset should be readable");
         Check(ShellFileHandlers.ListAsync("").GetAwaiter().GetResult().Count == 0,
             "files without extensions should still allow a browsed program");
         Check(ShellFileHandlers.Matches(new ShellFileHandlers.Handler(@"C:\Apps\Paint_2\mspaint.exe", "Paint", true),
@@ -171,7 +183,10 @@ internal static class Program
         Check(existing.Count == 0, "close Paint before running the optional launch smoke test");
         try
         {
-            ShellFileHandlers.Open(".png", paint.Name, paint.DisplayName, image);
+            var timer = System.Diagnostics.Stopwatch.StartNew();
+            var launch = ShellFileHandlers.OpenAsync(".png", paint.Name, paint.DisplayName, image);
+            Check(timer.Elapsed < TimeSpan.FromSeconds(2), "opening a program should not block the preview window");
+            launch.GetAwaiter().GetResult();
             Thread.Sleep(1500);
         }
         finally
@@ -305,7 +320,9 @@ internal static class Program
         var path = Path.Combine(_folder, "visible.png");
         using (var image = new Bitmap(20, 20)) image.Save(path, ImageFormat.Png);
         var settingsPath = Path.Combine(_folder, "window-apps", "settings.json");
-        FileOpener.SaveHandler(".png", "Example.Image", "BetterScreenShot", settingsPath);
+        var screenshotHandler = ShellFileHandlers.ListAsync(".png").GetAwaiter().GetResult()
+            .FirstOrDefault(handler => handler.DisplayName == "BetterScreenShot");
+        FileOpener.SaveHandler(".png", screenshotHandler?.Name ?? "Example.Image", "BetterScreenShot", settingsPath);
         FileOpener.SaveHandler(".json", "Example.Code", "VS Code", settingsPath);
         FileOpener.SaveHandler(".docx", "Example.Word", "Word", settingsPath);
         var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
@@ -321,6 +338,15 @@ internal static class Program
             Check(preview.IsVisible, "preview should open");
             Check(preview.CanOpenFile && preview.PreferredAppLabel == "Preferred app: BetterScreenShot",
                 "image preview should show its preferred app in the corner");
+            Check(preview.ChangeProgramButton.Content is WpfImage, "selected program should replace the settings glyph with an icon");
+            if (screenshotHandler?.Icon is not null)
+            {
+                for (var attempt = 0; attempt < 10 &&
+                     (preview.ChangeProgramButton.Content as WpfImage)?.Source != screenshotHandler.Icon; attempt++)
+                    PumpDispatcher(TimeSpan.FromMilliseconds(100));
+                Check((preview.ChangeProgramButton.Content as WpfImage)?.Source == screenshotHandler.Icon,
+                    "selected BetterScreenShot icon should appear on the program button");
+            }
             var imageChoice = FileOpener.LoadSelection(".png", settingsPath);
             var imageChooser = imageChoice is null ? preview.OpenButton : preview.ChangeProgramButton;
             imageChooser.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
@@ -330,6 +356,8 @@ internal static class Program
             Check(programMenu?.IsOpen == true && programMenu.Items.OfType<MenuItem>()
                 .Any(item => Equals(item.Header, ShellFileHandlers.ListAsync(".png").GetAwaiter().GetResult()[0].DisplayName)),
                 "Change program should show Windows Open With choices");
+            Check(programMenu!.Items.OfType<MenuItem>().Any(item => item.Icon is WpfImage icon && icon.Source is not null),
+                "program menu should display application icons");
             programMenu!.IsOpen = false;
             preview.Width = 420;
             PumpDispatcher(TimeSpan.FromMilliseconds(100));
@@ -403,6 +431,7 @@ internal static class Program
             Check(preview.CanOpenFile && preview.PreferredAppLabel == "Preferred app: none" &&
                   Equals(preview.OpenButton.Content, "Choose app"),
                 "unconfigured file types should offer a program choice");
+            Check(preview.ChangeProgramButton.Content is TextBlock, "unconfigured file types should show a settings glyph");
         }
         finally
         {

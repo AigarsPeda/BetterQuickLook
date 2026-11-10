@@ -39,6 +39,8 @@ internal sealed class PreviewWindow : Window
     private bool _programMenuOpen;
     private bool _programDialogOpen;
     private string? _currentFilePath;
+    private int _iconRequest;
+    private int _launchRequest;
 
     internal bool IsChoosingProgram => _programMenuOpen || _programDialogOpen;
     internal bool IsProgramButtonFocused => _openButton.IsKeyboardFocusWithin || _changeProgramButton.IsKeyboardFocusWithin;
@@ -113,8 +115,11 @@ internal sealed class PreviewWindow : Window
         _openButton.Click += (_, _) => OpenCurrentFile();
         Grid.SetColumn(_openButton, 2);
         footer.Children.Add(_openButton);
-        _changeProgramButton = MakeFooterButton("Change");
+        _changeProgramButton = MakeFooterButton("");
         _changeProgramButton.Click += (_, _) => ShowProgramChoices(_changeProgramButton);
+        _changeProgramButton.Padding = new Thickness(7, 5, 7, 5);
+        _changeProgramButton.MinWidth = 34;
+        _changeProgramButton.MinHeight = 30;
         _changeProgramButton.Margin = new Thickness(8, 0, 0, 0);
         Grid.SetColumn(_changeProgramButton, 3);
         footer.Children.Add(_changeProgramButton);
@@ -150,9 +155,13 @@ internal sealed class PreviewWindow : Window
         _jsonView?.Dispose();
         _jsonView = null;
         _currentFilePath = null;
+        _iconRequest++;
+        _launchRequest++;
         _preferredApp.Visibility = Visibility.Collapsed;
         _openButton.Visibility = Visibility.Collapsed;
         _changeProgramButton.Visibility = Visibility.Collapsed;
+        _openButton.IsEnabled = true;
+        _changeProgramButton.IsEnabled = true;
 
         var info = new FileInfo(path);
         _title.Text = info.Name;
@@ -229,18 +238,50 @@ internal sealed class PreviewWindow : Window
         Cursor = System.Windows.Input.Cursors.Hand
     };
 
-    private void RefreshPreferredApp()
+    private async void RefreshPreferredApp()
     {
         if (_currentFilePath is null) return;
-        var extension = Path.GetExtension(_currentFilePath);
+        var filePath = _currentFilePath;
+        var iconRequest = ++_iconRequest;
+        var extension = Path.GetExtension(filePath);
         var selection = FileOpener.LoadSelection(extension, _settingsPath);
         _preferredApp.Text = selection is null ? "Preferred app: none" : $"Preferred app: {selection.DisplayName}";
         _preferredApp.ToolTip = _preferredApp.Text;
         _preferredApp.Visibility = Visibility.Visible;
         _openButton.Content = selection is null ? "Choose app" : "Open";
         _openButton.Visibility = Visibility.Visible;
-        _changeProgramButton.Visibility = selection is null ? Visibility.Collapsed : Visibility.Visible;
+        _changeProgramButton.Content = selection is null
+            ? new TextBlock { Text = "\uE713", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 16 }
+            : ProgramIcon(ProgramIcons.Fallback);
+        _changeProgramButton.ToolTip = selection is null
+            ? "Choose a program"
+            : $"Change program (currently {selection.DisplayName})";
+        _changeProgramButton.Visibility = Visibility.Visible;
+        if (selection is null) return;
+
+        BitmapSource? icon;
+        if (selection.HandlerName is { } handlerName)
+        {
+            var handlers = await ShellFileHandlers.ListAsync(extension);
+            icon = handlers.FirstOrDefault(handler => ShellFileHandlers.Matches(handler, handlerName, selection.DisplayName))?.Icon;
+            if (icon is null) icon = await ProgramIcons.ExtractAsync(handlerName);
+        }
+        else icon = await ProgramIcons.ExtractAsync(selection.ExecutablePath);
+
+        _ = Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (_currentFilePath == filePath && iconRequest == _iconRequest)
+                _changeProgramButton.Content = ProgramIcon(icon ?? ProgramIcons.Fallback);
+        }));
     }
+
+    private static WpfImage ProgramIcon(BitmapSource icon) => new()
+    {
+        Source = icon,
+        Width = 18,
+        Height = 18,
+        Stretch = Stretch.Uniform
+    };
 
     private void OpenCurrentFile()
     {
@@ -277,6 +318,12 @@ internal sealed class PreviewWindow : Window
         menu.IsOpen = true;
 
         var handlers = await ShellFileHandlers.ListAsync(extension);
+        _ = Dispatcher.BeginInvoke(new Action(() => PopulateProgramMenu(menu, browseItem, filePath, extension, handlers)));
+    }
+
+    private void PopulateProgramMenu(WpfContextMenu menu, WpfMenuItem browseItem, string filePath,
+        string extension, IReadOnlyList<ShellFileHandlers.Handler> handlers)
+    {
         if (!menu.IsOpen || _currentFilePath != filePath) return;
         menu.Items.Clear();
         var current = FileOpener.LoadSelection(extension, _settingsPath);
@@ -291,6 +338,7 @@ internal sealed class PreviewWindow : Window
             var item = new WpfMenuItem
             {
                 Header = handler.DisplayName,
+                Icon = ProgramIcon(handler.Icon ?? ProgramIcons.Fallback),
                 IsChecked = current?.HandlerName is { } name && ShellFileHandlers.Matches(handler, name, current.DisplayName)
             };
             item.Click += (_, _) =>
@@ -303,13 +351,22 @@ internal sealed class PreviewWindow : Window
         var paint = IsLikelyImage(extension) ? FileOpener.FindPaint() : null;
         if (paint is not null && !handlers.Any(handler => handler.Name.Contains("mspaint", StringComparison.OrdinalIgnoreCase)))
         {
-            var paintItem = new WpfMenuItem { Header = "Paint" };
+            var paintItem = new WpfMenuItem
+            {
+                Header = "Paint",
+                Icon = ProgramIcon(ProgramIcons.Fallback)
+            };
             paintItem.Click += (_, _) =>
             {
                 menu.IsOpen = false;
                 Dispatcher.BeginInvoke(() => ChooseExecutable(paint));
             };
             menu.Items.Add(paintItem);
+            _ = ProgramIcons.ExtractAsync(paint).ContinueWith(task => Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (menu.IsOpen && task.IsCompletedSuccessfully && task.Result is { } icon)
+                    paintItem.Icon = ProgramIcon(icon);
+            })));
         }
         if (menu.Items.Count > 0) menu.Items.Add(new Separator());
         menu.Items.Add(browseItem);
@@ -365,22 +422,27 @@ internal sealed class PreviewWindow : Window
     private void LaunchProgram(FileOpener.Selection selection)
     {
         if (_currentFilePath is null) return;
-        try
+        var filePath = _currentFilePath;
+        var request = ++_launchRequest;
+        _openButton.IsEnabled = false;
+        _changeProgramButton.IsEnabled = false;
+        _openButton.Content = "Opening…";
+        Task launch = selection.HandlerName is { } handlerName
+            ? ShellFileHandlers.OpenAsync(Path.GetExtension(filePath), handlerName, selection.DisplayName, filePath)
+            : Task.Run(() => Process.Start(FileOpener.CreateStartInfo(selection.ExecutablePath!, filePath)));
+        _ = launch.ContinueWith(task => Dispatcher.BeginInvoke(new Action(() =>
         {
-            if (selection.HandlerName is { } handlerName)
-                ShellFileHandlers.Open(Path.GetExtension(_currentFilePath), handlerName, selection.DisplayName, _currentFilePath);
-            else if (selection.ExecutablePath is { } executablePath)
-                Process.Start(FileOpener.CreateStartInfo(executablePath, _currentFilePath));
-            Hide();
-        }
-        catch (FileNotFoundException) when (selection.HandlerName is not null)
-        {
-            ShowProgramChoices(_openButton);
-        }
-        catch (Exception error) when (error is IOException or InvalidOperationException or System.ComponentModel.Win32Exception or COMException)
-        {
-            System.Windows.MessageBox.Show(this, error.Message, "Could not open file");
-        }
+            var error = task.Exception?.GetBaseException();
+            if (request != _launchRequest || _currentFilePath != filePath) return;
+            _openButton.IsEnabled = true;
+            _changeProgramButton.IsEnabled = true;
+            if (error is null) { Hide(); return; }
+            RefreshPreferredApp();
+            if (error is FileNotFoundException && selection.HandlerName is not null)
+                ShowProgramChoices(_changeProgramButton);
+            else
+                System.Windows.MessageBox.Show(this, error.Message, "Could not open file");
+        })));
     }
 
     private void ShowJson(string path)
@@ -630,10 +692,14 @@ internal sealed class PreviewWindow : Window
     public new void Hide()
     {
         _request++;
+        _iconRequest++;
+        _launchRequest++;
         _currentFilePath = null;
         _preferredApp.Visibility = Visibility.Collapsed;
         _openButton.Visibility = Visibility.Collapsed;
         _changeProgramButton.Visibility = Visibility.Collapsed;
+        _openButton.IsEnabled = true;
+        _changeProgramButton.IsEnabled = true;
         CancelFolderScan();
         _shellPreview?.Dispose();
         _shellPreview = null;

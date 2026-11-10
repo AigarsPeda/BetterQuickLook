@@ -56,16 +56,7 @@ internal static class FileOpener
             : new Dictionary<string, Selection>(settings.Programs, StringComparer.OrdinalIgnoreCase);
         programs[PreferenceKey(extension)] = selection;
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        var temporary = path + ".tmp";
-        File.WriteAllText(temporary, JsonSerializer.Serialize(settings with { Programs = programs }));
-        for (var attempt = 0; ; attempt++)
-        {
-            try { File.Move(temporary, path, true); break; }
-            catch (Exception error) when ((error is IOException or UnauthorizedAccessException) && attempt < 3)
-            {
-                Thread.Sleep(50);
-            }
-        }
+        File.WriteAllText(path, JsonSerializer.Serialize(settings with { Programs = programs }));
     }
 
     private static Settings ReadSettings(string? settingsPath)
