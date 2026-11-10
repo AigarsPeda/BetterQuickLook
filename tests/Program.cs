@@ -20,6 +20,8 @@ internal static class Program
     [STAThread]
     private static int Main()
     {
+        var arguments = Environment.GetCommandLineArgs();
+        if (arguments.Contains("--benchmark")) return Performance.Run(arguments);
         _folder = Path.Combine(Path.GetTempPath(), "BetterQuickLook-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_folder);
         try
@@ -35,6 +37,10 @@ internal static class Program
             Run("Missing and malformed document parts", InvalidDocuments);
             Run("JSON formatting, tree, and edge cases", JsonFiles);
             Run("Folder size and scan edge cases", Folders);
+            Run("Folder boundaries, cancellation, hidden and Unicode files", () => EdgeCases.Folders(_folder));
+            Run("JSON reference formatting, long strings and excessive nesting", () => EdgeCases.JsonFormatting(_folder));
+            Run("Large JSON Unicode boundary", () => EdgeCases.UnicodeSample(_folder));
+            Run("Portrait image dimensions and file handle release", () => EdgeCases.ImageLifetime(_folder));
             if (!Environment.GetCommandLineArgs().Contains("--no-ui"))
             {
                 Run("Desktop Shell selection", DesktopShell);

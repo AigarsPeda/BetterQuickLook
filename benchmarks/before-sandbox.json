@@ -1,0 +1,43 @@
+{
+  "Runtime": "9.0.22",
+  "OS": "Microsoft Windows NT 10.0.26200.0",
+  "Bitness": 32,
+  "Samples": 7,
+  "Warmups": 2,
+  "JsonBytes": 1053891,
+  "TimestampUtc": "2026-11-10T10:47:55.6082867Z",
+  "Results": [
+    {
+      "Name": "Folder scan: 2,000 files",
+      "MedianMs": 312.9667,
+      "MinMs": 280.8152,
+      "MaxMs": 345.6599,
+      "MedianAllocatedBytes": 948192,
+      "MedianCpuMs": 281.25
+    },
+    {
+      "Name": "JSON read: 15,000 objects",
+      "MedianMs": 25.3467,
+      "MinMs": 24.5391,
+      "MaxMs": 27.1478,
+      "MedianAllocatedBytes": 8573388,
+      "MedianCpuMs": 31.25
+    },
+    {
+      "Name": "JSON view: capped formatted text",
+      "MedianMs": 353.2212,
+      "MinMs": 148.4882,
+      "MaxMs": 539.4105,
+      "MedianAllocatedBytes": 19928640,
+      "MedianCpuMs": 343.75
+    },
+    {
+      "Name": "JPEG decode: 4000 x 3000",
+      "MedianMs": 28.1993,
+      "MinMs": 19.0965,
+      "MaxMs": 36.417,
+      "MedianAllocatedBytes": 4188,
+      "MedianCpuMs": 31.25
+    }
+  ]
+}

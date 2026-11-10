@@ -30,6 +30,8 @@ The bundled Word and Excel reader is a content preview, not a full layout render
 
 ## Tests
 
+See [the performance review](benchmarks/README.md) for reproducible before/after measurements and remaining optimization targets.
+
 The tests cover Desktop and Explorer shortcut eligibility, active Explorer tabs, PNG and JPEG decoding, corrupt images, preferred apps by file type, Windows Open With listings and menus, Word and Excel content, malformed documents, JSON formatting and parse errors, folder sizes and scan limits, Desktop Shell selection, focus changes, and reopening after the title bar close button is used. Run the visible-window tests with `--open-with-smoke` to also launch and close Paint with a temporary image.
 
 ```powershell
