@@ -1,11 +1,13 @@
 using System.IO;
 using System.ComponentModel;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using System.Windows.Interop;
 using WinForms = System.Windows.Forms;
 using WpfImage = System.Windows.Controls.Image;
 using Color = System.Windows.Media.Color;
@@ -69,6 +71,19 @@ internal sealed class PreviewWindow : Window
         root.Children.Add(footer);
 
     }
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        var handle = new WindowInteropHelper(this).Handle;
+        var enabled = 1;
+        // Windows 10 used attribute 19; current Windows uses attribute 20.
+        if (DwmSetWindowAttribute(handle, 20, ref enabled, sizeof(int)) != 0)
+            DwmSetWindowAttribute(handle, 19, ref enabled, sizeof(int));
+    }
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
     public void ShowFile(string path)
     {

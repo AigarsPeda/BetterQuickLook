@@ -27,7 +27,7 @@ The bundled Word and Excel reader is a content preview, not a full layout render
 
 ## Tests
 
-The tests cover Desktop and Explorer shortcut eligibility, active Explorer tabs, PNG and JPEG decoding, corrupt images, Word and Excel content, malformed documents, Desktop Shell selection, and the preview staying visible after focus changes.
+The tests cover Desktop and Explorer shortcut eligibility, active Explorer tabs, PNG and JPEG decoding, corrupt images, Word and Excel content, malformed documents, Desktop Shell selection, focus changes, and reopening after the title bar close button is used.
 
 ```powershell
 dotnet build .\tests\BetterQuickLook.Tests.csproj -c Release -r win-x86
