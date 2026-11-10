@@ -3,6 +3,8 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.IO.Compression;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Threading;
 using BetterQuickLook;
 
@@ -25,6 +27,7 @@ internal static class Program
             Run("Word text and empty document", Word);
             Run("Excel shared, inline, and numeric cells", Excel);
             Run("Missing and malformed document parts", InvalidDocuments);
+            Run("Folder size and scan edge cases", Folders);
             if (!Environment.GetCommandLineArgs().Contains("--no-ui"))
             {
                 Run("Desktop Shell selection", DesktopShell);
@@ -138,6 +141,30 @@ internal static class Program
             "Desktop selection should resolve to a real file or folder");
     }
 
+    private static void Folders()
+    {
+        var root = Path.Combine(_folder, "folder-scan");
+        Directory.CreateDirectory(root);
+        Check(FolderPreview.Scan(root, CancellationToken.None) == new FolderScanResult(0, 0, 0, 0, false),
+            "empty folder should have zero size and items");
+
+        File.WriteAllBytes(Path.Combine(root, "empty.txt"), []);
+        var nested = Directory.CreateDirectory(Path.Combine(root, "nested"));
+        File.WriteAllBytes(Path.Combine(nested.FullName, "data.bin"), new byte[2048]);
+        var result = FolderPreview.Scan(root, CancellationToken.None);
+        Check(result.Bytes == 2048 && result.Files == 2 && result.Folders == 1 && !result.IsPartial,
+            "nested files and zero-byte files should count correctly");
+
+        var limited = FolderPreview.Scan(root, CancellationToken.None, maxEntries: 1);
+        Check(limited.ReachedLimit && limited.IsPartial, "large scans should stop at the item limit");
+        using var canceled = new CancellationTokenSource();
+        canceled.Cancel();
+        try { FolderPreview.Scan(root, canceled.Token); throw new Exception("canceled scan continued"); }
+        catch (OperationCanceledException) { }
+        ExpectFailure(() => FolderPreview.Scan(Path.Combine(root, "missing"), CancellationToken.None),
+            "missing folders should fail clearly");
+    }
+
     private static void WindowLifecycle()
     {
         var path = Path.Combine(_folder, "visible.png");
@@ -162,6 +189,14 @@ internal static class Program
             Check(!preview.IsVisible, "the title bar close button should hide the preview");
             preview.ShowFile(path);
             Check(preview.IsVisible && preview.Topmost, "preview should reopen after the title bar close button");
+            var folder = Directory.CreateDirectory(Path.Combine(_folder, "folder-window"));
+            preview.Hide();
+            preview.ShowFile(folder.FullName);
+            PumpDispatcher(TimeSpan.FromMilliseconds(150));
+            Check(ContainsText(preview, "LOCATION") && ContainsText(preview, folder.FullName),
+                "folder preview should show a labeled location");
+            Check(ContainsText(preview, "SIZE") && ContainsText(preview, "CONTENTS"),
+                "folder preview should show size and item count fields");
         }
         finally
         {
@@ -169,6 +204,15 @@ internal static class Program
             preview.ClosePermanently();
             app.Shutdown();
         }
+    }
+
+    private static bool ContainsText(DependencyObject root, string value)
+    {
+        if (root is TextBlock label && label.Text.Contains(value, StringComparison.Ordinal)) return true;
+        if (root is System.Windows.Controls.TextBox box && box.Text.Contains(value, StringComparison.Ordinal)) return true;
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+            if (ContainsText(VisualTreeHelper.GetChild(root, i), value)) return true;
+        return false;
     }
 
     private static void PumpDispatcher(TimeSpan duration)

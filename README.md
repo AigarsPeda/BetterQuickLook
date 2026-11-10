@@ -21,13 +21,14 @@ The x86 build runs natively on x86 Windows and through Windows compatibility sup
 - Images use the image decoders installed in Windows. Common JPEG, PNG, GIF, BMP, TIFF, ICO, and other formats with installed codecs can be displayed. A codec is required for formats Windows cannot decode.
 - `.docx` and `.xlsx` use the installed Windows preview handler when available. A bundled reader shows document text or the first worksheet's first 100 rows and 16 columns when no handler is available.
 - Older `.doc`, `.xls`, and some macro-enabled Office formats require a Windows preview handler, usually supplied by Microsoft Office.
+- Folders show their location, total file size, and counts of files and subfolders. Size is calculated in the background. The scan stops after 100,000 items; linked and inaccessible items are excluded, and partial results are labeled.
 - Other files show their name, type, size, modified time, and path.
 
 The bundled Word and Excel reader is a content preview, not a full layout renderer. Exact page formatting, charts, formulas, and every image format would require additional rendering engines and a much larger executable.
 
 ## Tests
 
-The tests cover Desktop and Explorer shortcut eligibility, active Explorer tabs, PNG and JPEG decoding, corrupt images, Word and Excel content, malformed documents, Desktop Shell selection, focus changes, and reopening after the title bar close button is used.
+The tests cover Desktop and Explorer shortcut eligibility, active Explorer tabs, PNG and JPEG decoding, corrupt images, Word and Excel content, malformed documents, folder sizes and scan limits, Desktop Shell selection, focus changes, and reopening after the title bar close button is used.
 
 ```powershell
 dotnet build .\tests\BetterQuickLook.Tests.csproj -c Release -r win-x86

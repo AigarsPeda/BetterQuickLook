@@ -23,6 +23,7 @@ internal sealed class PreviewWindow : Window
     private readonly TextBlock _details;
     private readonly Grid _body;
     private ShellPreview? _shellPreview;
+    private CancellationTokenSource? _folderScan;
     private int _request;
     private bool _allowClose;
 
@@ -88,6 +89,7 @@ internal sealed class PreviewWindow : Window
     public void ShowFile(string path)
     {
         _request++;
+        CancelFolderScan();
         _shellPreview?.Dispose();
         _shellPreview = null;
         _body.Children.Clear();
@@ -103,7 +105,7 @@ internal sealed class PreviewWindow : Window
         Topmost = false;
         Topmost = true;
         Activate();
-        if (Directory.Exists(path)) { ShowMessage(path); return; }
+        if (Directory.Exists(path)) { ShowFolder(path); return; }
 
         var ext = info.Extension.ToLowerInvariant();
         if (ext is ".docx" or ".xlsx")
@@ -145,6 +147,109 @@ internal sealed class PreviewWindow : Window
         }
 
         ShowMessage(path);
+    }
+
+    private void ShowFolder(string path)
+    {
+        var panel = new StackPanel { Margin = new Thickness(30), MaxWidth = 760 };
+        AddFolderLabel(panel, "LOCATION");
+        panel.Children.Add(new TextBox
+        {
+            Text = path,
+            IsReadOnly = true,
+            TextWrapping = TextWrapping.Wrap,
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(0),
+            Background = Brushes.Transparent,
+            Foreground = Brushes.White,
+            FontSize = 17,
+            Margin = new Thickness(0, 7, 0, 28)
+        });
+        AddFolderLabel(panel, "SIZE");
+        var size = AddFolderValue(panel, "Calculating…");
+        AddFolderLabel(panel, "CONTENTS");
+        var contents = AddFolderValue(panel, "Counting files and folders…");
+        var note = new TextBlock
+        {
+            Foreground = new SolidColorBrush(Color.FromRgb(166, 174, 187)),
+            FontSize = 12,
+            TextWrapping = TextWrapping.Wrap
+        };
+        panel.Children.Add(note);
+        _body.Children.Add(new ScrollViewer
+        {
+            Content = panel,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+        });
+        LoadFolderDetails(path, size, contents, note, _request);
+    }
+
+    private static void AddFolderLabel(System.Windows.Controls.Panel panel, string label) => panel.Children.Add(new TextBlock
+    {
+        Text = label,
+        Foreground = new SolidColorBrush(Color.FromRgb(166, 174, 187)),
+        FontSize = 12,
+        FontWeight = FontWeights.SemiBold
+    });
+
+    private static TextBlock AddFolderValue(System.Windows.Controls.Panel panel, string value)
+    {
+        var text = new TextBlock
+        {
+            Text = value,
+            Foreground = Brushes.White,
+            FontSize = 20,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 7, 0, 28)
+        };
+        panel.Children.Add(text);
+        return text;
+    }
+
+    private void LoadFolderDetails(string path, TextBlock size, TextBlock contents, TextBlock note, int request)
+    {
+        var scan = new CancellationTokenSource();
+        _folderScan = scan;
+        _ = Task.Run(() =>
+        {
+            FolderScanResult? result = null;
+            try { result = FolderPreview.Scan(path, scan.Token); }
+            catch (OperationCanceledException) { }
+            catch (Exception) { }
+
+            if (Dispatcher.HasShutdownStarted)
+            {
+                scan.Dispose();
+                return;
+            }
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (ReferenceEquals(_folderScan, scan)) _folderScan = null;
+                if (request == _request && IsVisible)
+                {
+                    if (result is { } summary)
+                    {
+                        size.Text = (summary.IsPartial ? "At least " : "") + FormatSize(summary.Bytes);
+                        contents.Text = $"{summary.Files:N0} files  •  {summary.Folders:N0} folders" +
+                                        (summary.IsPartial ? " (partial)" : "");
+                        if (summary.ReachedLimit) note.Text = "Scan stopped after 100,000 items to limit resource use.";
+                        else if (summary.Skipped > 0) note.Text = "Linked or inaccessible items were excluded from the size.";
+                    }
+                    else if (!scan.IsCancellationRequested)
+                    {
+                        size.Text = "Unavailable";
+                        contents.Text = "Could not read this folder";
+                    }
+                }
+                scan.Dispose();
+            });
+        });
+    }
+
+    private void CancelFolderScan()
+    {
+        _folderScan?.Cancel();
+        _folderScan = null;
     }
 
     private bool ShowNativePreview(string path)
@@ -267,6 +372,7 @@ internal sealed class PreviewWindow : Window
     public new void Hide()
     {
         _request++;
+        CancelFolderScan();
         _shellPreview?.Dispose();
         _shellPreview = null;
         _body.Children.Clear();
