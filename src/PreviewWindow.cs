@@ -23,6 +23,7 @@ internal sealed class PreviewWindow : Window
     private readonly TextBlock _details;
     private readonly Grid _body;
     private ShellPreview? _shellPreview;
+    private JsonPreviewView? _jsonView;
     private CancellationTokenSource? _folderScan;
     private int _request;
     private bool _allowClose;
@@ -93,6 +94,8 @@ internal sealed class PreviewWindow : Window
         _shellPreview?.Dispose();
         _shellPreview = null;
         _body.Children.Clear();
+        _jsonView?.Dispose();
+        _jsonView = null;
 
         var info = new FileInfo(path);
         _title.Text = info.Name;
@@ -108,6 +111,11 @@ internal sealed class PreviewWindow : Window
         if (Directory.Exists(path)) { ShowFolder(path); return; }
 
         var ext = info.Extension.ToLowerInvariant();
+        if (ext is ".json" or ".jsonc")
+        {
+            ShowJson(path);
+            return;
+        }
         if (ext is ".docx" or ".xlsx")
         {
             ShowMessage("Loading document preview…");
@@ -147,6 +155,32 @@ internal sealed class PreviewWindow : Window
         }
 
         ShowMessage(path);
+    }
+
+    private void ShowJson(string path)
+    {
+        ShowMessage("Loading JSON preview…");
+        var current = _request;
+        _ = Task.Run(() => JsonPreviewReader.Read(path)).ContinueWith(task =>
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (!task.IsCompletedSuccessfully)
+                {
+                    _ = task.Exception;
+                    if (current == _request && IsVisible)
+                        ShowMessage("Could not read this JSON file. File details are shown above.");
+                    return;
+                }
+                var data = task.Result;
+                if (current != _request || !IsVisible)
+                {
+                    data.Dispose();
+                    return;
+                }
+                _body.Children.Clear();
+                _jsonView = new JsonPreviewView(path, data);
+                _body.Children.Add(_jsonView);
+            }));
     }
 
     private void ShowFolder(string path)
@@ -376,6 +410,8 @@ internal sealed class PreviewWindow : Window
         _shellPreview?.Dispose();
         _shellPreview = null;
         _body.Children.Clear();
+        _jsonView?.Dispose();
+        _jsonView = null;
         base.Hide();
     }
 

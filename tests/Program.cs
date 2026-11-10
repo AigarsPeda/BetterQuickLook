@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Threading;
 using BetterQuickLook;
@@ -27,6 +28,7 @@ internal static class Program
             Run("Word text and empty document", Word);
             Run("Excel shared, inline, and numeric cells", Excel);
             Run("Missing and malformed document parts", InvalidDocuments);
+            Run("JSON formatting, tree, and edge cases", JsonFiles);
             Run("Folder size and scan edge cases", Folders);
             if (!Environment.GetCommandLineArgs().Contains("--no-ui"))
             {
@@ -165,6 +167,53 @@ internal static class Program
             "missing folders should fail clearly");
     }
 
+    private static void JsonFiles()
+    {
+        var valid = Path.Combine(_folder, "sample.json");
+        File.WriteAllText(valid, "{\"name\":\"Rīga\",\"items\":[1,true,null,{\"nested\":\"yes\"}]}");
+        using (var data = JsonPreviewReader.Read(valid))
+        {
+            Check(data.Document is not null && data.Notice is null, "valid JSON should parse");
+            Check(data.Text.Contains("\n") && data.Text.Contains("Rīga"), "JSON should be formatted and preserve Unicode");
+            var view = new JsonPreviewView(valid, data);
+            var paragraph = (Paragraph)view.FormattedText.Document.Blocks.FirstBlock!;
+            Check(paragraph.Inlines.OfType<Run>().Any(run => run.Text == "\"name\""),
+                "property names should receive syntax highlighting");
+            var root = (System.Windows.Controls.TreeViewItem)view.Tree.Items[0];
+            Check(root.Items.Count == 1, "tree children should be deferred until expansion");
+            root.IsExpanded = true;
+            Check(root.Items.Count == 2, "expanding an object should show its properties");
+        }
+
+        var jsonc = Path.Combine(_folder, "comments.jsonc");
+        File.WriteAllText(jsonc, "{ // note\n \"value\": 1, }");
+        using (var data = JsonPreviewReader.Read(jsonc))
+            Check(data.Document is not null && data.Text.Contains("\"value\""), "JSONC comments and trailing commas should be supported");
+
+        var invalid = Path.Combine(_folder, "broken.json");
+        File.WriteAllText(invalid, "{\"ok\": 1,\n\"bad\": }");
+        using (var data = JsonPreviewReader.Read(invalid))
+            Check(data.Document is null && data.Notice?.Contains("line 2") == true,
+                "invalid JSON should show the error line");
+
+        var large = Path.Combine(_folder, "large.json");
+        File.WriteAllText(large, "{\"data\":\"" + new string('x', JsonPreviewReader.MaxFileBytes) + "\"}");
+        using (var data = JsonPreviewReader.Read(large))
+            Check(data.Document is null && data.Text.Length <= JsonPreviewReader.MaxShownChars &&
+                  data.Notice?.StartsWith("Large file") == true,
+                "oversized JSON should use a bounded text sample");
+
+        var array = Path.Combine(_folder, "array.json");
+        File.WriteAllText(array, "[" + string.Join(',', Enumerable.Repeat("0", 501)) + "]");
+        using (var data = JsonPreviewReader.Read(array))
+        {
+            var view = new JsonPreviewView(array, data);
+            var root = (System.Windows.Controls.TreeViewItem)view.Tree.Items[0];
+            root.IsExpanded = true;
+            Check(root.Items.Count == 501, "large tree nodes should show 500 entries and a limit notice");
+        }
+    }
+
     private static void WindowLifecycle()
     {
         var path = Path.Combine(_folder, "visible.png");
@@ -197,6 +246,13 @@ internal static class Program
                 "folder preview should show a labeled location");
             Check(ContainsText(preview, "SIZE") && ContainsText(preview, "CONTENTS"),
                 "folder preview should show size and item count fields");
+            var json = Path.Combine(_folder, "window.json");
+            File.WriteAllText(json, "{\"ready\":true}");
+            preview.Hide();
+            preview.ShowFile(json);
+            for (var attempt = 0; attempt < 10 && !ContainsText(preview, json); attempt++)
+                PumpDispatcher(TimeSpan.FromMilliseconds(100));
+            Check(ContainsText(preview, json), "JSON files should open the JSON preview view");
         }
         finally
         {
