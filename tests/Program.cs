@@ -202,7 +202,15 @@ internal static partial class Program
             Check(preview.OpenButtonLabel == $"Open in {paint.DisplayName}", "the new preferred app should appear on the button");
             var shortcut = OpenShortcut(preview);
             Check(shortcut.CanExecute(null, preview), "Ctrl+Enter should be available for a file");
+            preview.UpdateLayout();
+            var label = preview.OpenButtonLabel;
+            var buttons = new[] { preview.OpenButton, preview.ChangeProgramButton };
+            var before = buttons.Select(FooterAppearance).ToArray();
             shortcut.Execute(null, preview);
+            preview.UpdateLayout();
+            Check(!shortcut.CanExecute(null, preview), "another launch should be blocked while Paint opens");
+            Check(preview.OpenButtonLabel == label && buttons.Select(FooterAppearance).SequenceEqual(before),
+                "launching must preserve the buttons' labels, positions, sizes, and colors");
             WaitForPickerState(() => !preview.IsVisible && PaintIsRunning());
         }
         finally { ClosePaint(); }
@@ -217,6 +225,13 @@ internal static partial class Program
             appItem!.Items.OfType<WpfMenuItem>().Single(item => Equals(item.Header, action))
                 .RaiseEvent(new RoutedEventArgs(WpfMenuItem.ClickEvent));
             WaitForPickerState(() => !preview.IsVisible && PaintIsRunning());
+        }
+
+        (Rect Bounds, System.Windows.Media.Color Fill, bool Enabled) FooterAppearance(System.Windows.Controls.Button button)
+        {
+            var chrome = (Border)button.Template.FindName("ButtonChrome", button);
+            return (button.TransformToAncestor(preview).TransformBounds(new Rect(button.RenderSize)),
+                ((SolidColorBrush)chrome.Background).Color, button.IsEnabled);
         }
     }
 
@@ -406,6 +421,18 @@ internal static partial class Program
             Check(programMenu.Items.OfType<MenuItem>().Where(item => item.Icon is WpfImage).All(item =>
                     item.Items.OfType<MenuItem>().Select(action => action.Header).SequenceEqual(new object[] { "Open once", "Open and remember" })),
                 "each program should offer a one-time action and a remember action");
+            var appItem = programMenu.Items.OfType<MenuItem>().First(item => item.Icon is WpfImage);
+            programMenu.UpdateLayout();
+            var iconStrip = appItem.Template.FindName("IconStrip", appItem) as Border;
+            Check(iconStrip?.Background is SolidColorBrush iconBrush && iconBrush.Color == System.Windows.Media.Color.FromRgb(31, 35, 42),
+                "the visible app icon strip should use the preview's dark surface color");
+            appItem.IsSubmenuOpen = true;
+            var openOnce = (MenuItem)appItem.Items[0];
+            WaitForPickerState(() => openOnce.IsVisible && openOnce.ActualWidth > 0);
+            var submenu = appItem.Template.FindName("PART_Popup", appItem) as Popup;
+            Check(submenu?.Child is Border { Background: SolidColorBrush submenuBrush } &&
+                  programMenu.Background is SolidColorBrush menuBrush && submenuBrush.Color == menuBrush.Color,
+                "the visible submenu should match the program picker background");
             programMenu!.IsOpen = false;
             preview.Width = 420;
             PumpDispatcher(TimeSpan.FromMilliseconds(100));

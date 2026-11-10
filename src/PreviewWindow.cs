@@ -37,6 +37,7 @@ internal sealed class PreviewWindow : Window
     private int _request;
     private bool _allowClose;
     private bool _programDialogOpen;
+    private bool _isLaunchingProgram;
     private string? _currentFilePath;
     private int _iconRequest;
     private int _launchRequest;
@@ -52,6 +53,10 @@ internal sealed class PreviewWindow : Window
     public PreviewWindow(string? settingsPath = null)
     {
         _settingsPath = settingsPath;
+        Resources.MergedDictionaries.Add(new ResourceDictionary
+        {
+            Source = new Uri("/BetterQuickLook;component/PreviewControls.xaml", UriKind.Relative)
+        });
         Title = "BetterQuickLook";
         Width = 900;
         Height = 650;
@@ -102,17 +107,16 @@ internal sealed class PreviewWindow : Window
         };
         footer.Children.Add(hint);
         _openLabel = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis };
-        _openButton = MakeFooterButton("");
+        _openButton = MakeFooterButton();
         _openButton.Content = _openLabel;
         _openButton.MaxWidth = 250;
         _openButton.Click += (_, _) => OpenCurrentFile();
         Grid.SetColumn(_openButton, 1);
         footer.Children.Add(_openButton);
-        _changeProgramButton = MakeFooterButton("");
+        _changeProgramButton = MakeFooterButton();
         _changeProgramButton.Click += (_, _) => ShowProgramChoices(_changeProgramButton);
-        _changeProgramButton.Padding = new Thickness(7, 5, 7, 5);
-        _changeProgramButton.MinWidth = 34;
-        _changeProgramButton.MinHeight = 30;
+        _changeProgramButton.Padding = new Thickness(0);
+        _changeProgramButton.Width = 34;
         _changeProgramButton.Margin = new Thickness(8, 0, 0, 0);
         Grid.SetColumn(_changeProgramButton, 2);
         footer.Children.Add(_changeProgramButton);
@@ -149,8 +153,7 @@ internal sealed class PreviewWindow : Window
         _launchRequest++;
         _openButton.Visibility = Visibility.Collapsed;
         _changeProgramButton.Visibility = Visibility.Collapsed;
-        _openButton.IsEnabled = true;
-        _changeProgramButton.IsEnabled = true;
+        _isLaunchingProgram = false;
 
         var info = new FileInfo(path);
         _title.Text = info.Name;
@@ -214,16 +217,10 @@ internal sealed class PreviewWindow : Window
         ShowMessage(path);
     }
 
-    private static WpfButton MakeFooterButton(string label) => new()
+    private WpfButton MakeFooterButton() => new()
     {
-        Content = label,
-        Visibility = Visibility.Collapsed,
-        Background = new SolidColorBrush(Color.FromRgb(50, 64, 84)),
-        Foreground = Brushes.White,
-        BorderBrush = new SolidColorBrush(Color.FromRgb(78, 96, 119)),
-        BorderThickness = new Thickness(1),
-        Padding = new Thickness(12, 6, 12, 6),
-        Cursor = System.Windows.Input.Cursors.Hand
+        Style = (Style)FindResource("PreviewFooterButton"),
+        Visibility = Visibility.Collapsed
     };
 
     private async void RefreshPreferredApp()
@@ -264,7 +261,7 @@ internal sealed class PreviewWindow : Window
         Stretch = Stretch.Uniform
     };
 
-    private bool CanOpenCurrentFile => _currentFilePath is not null && _openButton.IsEnabled && !IsChoosingProgram;
+    private bool CanOpenCurrentFile => _currentFilePath is not null && !_isLaunchingProgram && !IsChoosingProgram;
 
     private void OpenCurrentFile()
     {
@@ -284,9 +281,7 @@ internal sealed class PreviewWindow : Window
         var menu = new WpfContextMenu
         {
             PlacementTarget = anchor,
-            Background = new SolidColorBrush(Color.FromRgb(38, 43, 51)),
-            Foreground = Brushes.White,
-            MaxHeight = 460
+            Style = (Style)FindResource("ProgramPickerMenu")
         };
         ProgramMenu = menu;
         menu.Items.Add(new WpfMenuItem { Header = "Finding available programs…", IsEnabled = false });
@@ -410,12 +405,9 @@ internal sealed class PreviewWindow : Window
 
     private void LaunchProgram(FileOpener.Selection selection)
     {
-        if (_currentFilePath is null) return;
-        var filePath = _currentFilePath;
+        if (_isLaunchingProgram || _currentFilePath is not { } filePath) return;
         var request = ++_launchRequest;
-        _openButton.IsEnabled = false;
-        _changeProgramButton.IsEnabled = false;
-        _openLabel.Text = "Opening…";
+        _isLaunchingProgram = true;
         Task launch = selection.HandlerName is { } handlerName
             ? ShellFileHandlers.OpenAsync(Path.GetExtension(filePath), handlerName, selection.DisplayName, filePath)
             : Task.Run(() => Process.Start(FileOpener.CreateStartInfo(selection.ExecutablePath!, filePath)));
@@ -423,8 +415,7 @@ internal sealed class PreviewWindow : Window
         {
             var error = task.Exception?.GetBaseException();
             if (request != _launchRequest || _currentFilePath != filePath) return;
-            _openButton.IsEnabled = true;
-            _changeProgramButton.IsEnabled = true;
+            _isLaunchingProgram = false;
             if (error is null) { Hide(); return; }
             RefreshPreferredApp();
             if (error is FileNotFoundException && selection.HandlerName is not null)
@@ -687,8 +678,7 @@ internal sealed class PreviewWindow : Window
         _currentFilePath = null;
         _openButton.Visibility = Visibility.Collapsed;
         _changeProgramButton.Visibility = Visibility.Collapsed;
-        _openButton.IsEnabled = true;
-        _changeProgramButton.IsEnabled = true;
+        _isLaunchingProgram = false;
         CancelFolderScan();
         _shellPreview?.Dispose();
         _shellPreview = null;
