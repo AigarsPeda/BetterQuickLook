@@ -6,20 +6,23 @@ namespace BetterQuickLook;
 
 internal static class ImageEditor
 {
-    private sealed record Settings(string ImageEditorPath);
+    private sealed record Settings(string? ImageEditorPath = null, string? HandlerName = null, string? DisplayName = null);
+    internal sealed record Selection(string? EditorPath, string? HandlerName, string DisplayName);
 
     internal static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "BetterQuickLook", "settings.json");
 
-    internal static string? Load(string? settingsPath = null)
+    internal static Selection? LoadSelection(string? settingsPath = null)
     {
         try
         {
             var settings = JsonSerializer.Deserialize<Settings>(File.ReadAllText(settingsPath ?? SettingsPath));
-            return settings is not null && File.Exists(settings.ImageEditorPath) &&
-                   Path.GetExtension(settings.ImageEditorPath).Equals(".exe", StringComparison.OrdinalIgnoreCase)
-                ? settings.ImageEditorPath : null;
+            if (!string.IsNullOrWhiteSpace(settings?.HandlerName) && !string.IsNullOrWhiteSpace(settings.DisplayName))
+                return new Selection(null, settings.HandlerName, settings.DisplayName);
+            return settings?.ImageEditorPath is { } path && File.Exists(path) &&
+                   Path.GetExtension(path).Equals(".exe", StringComparison.OrdinalIgnoreCase)
+                ? new Selection(path, null, DisplayName(path)) : null;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
         {
@@ -27,15 +30,29 @@ internal static class ImageEditor
         }
     }
 
+    internal static string? Load(string? settingsPath = null) => LoadSelection(settingsPath)?.EditorPath;
+
     internal static void Save(string editorPath, string? settingsPath = null)
     {
         if (!File.Exists(editorPath) || !Path.GetExtension(editorPath).Equals(".exe", StringComparison.OrdinalIgnoreCase))
             throw new FileNotFoundException("Choose an editor executable (.exe).", editorPath);
 
+        WriteSettings(new Settings(ImageEditorPath: editorPath), settingsPath);
+    }
+
+    internal static void SaveHandler(string handlerName, string displayName, string? settingsPath = null)
+    {
+        if (string.IsNullOrWhiteSpace(handlerName) || string.IsNullOrWhiteSpace(displayName))
+            throw new ArgumentException("Choose an available program.");
+        WriteSettings(new Settings(HandlerName: handlerName, DisplayName: displayName), settingsPath);
+    }
+
+    private static void WriteSettings(Settings settings, string? settingsPath)
+    {
         var path = settingsPath ?? SettingsPath;
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temporary = path + ".tmp";
-        File.WriteAllText(temporary, JsonSerializer.Serialize(new Settings(editorPath)));
+        File.WriteAllText(temporary, JsonSerializer.Serialize(settings));
         File.Move(temporary, path, true);
     }
 

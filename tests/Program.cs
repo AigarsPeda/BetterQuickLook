@@ -28,6 +28,7 @@ internal static class Program
             Run("PNG and JPEG decode at preview size", Images);
             Run("Corrupt image rejection", CorruptImage);
             Run("Image editor preference and launch arguments", ImageEditorChoice);
+            Run("Windows Open With image programs", ImagePrograms);
             Run("Word text and empty document", Word);
             Run("Excel shared, inline, and numeric cells", Excel);
             Run("Missing and malformed document parts", InvalidDocuments);
@@ -37,6 +38,8 @@ internal static class Program
             {
                 Run("Desktop Shell selection", DesktopShell);
                 Run("Preview remains visible after focus changes", WindowLifecycle);
+                if (Environment.GetCommandLineArgs().Contains("--open-with-smoke"))
+                    Run("Open With launches Paint", OpenWithSmoke);
             }
             Console.WriteLine($"{_passed} tests passed.");
             return 0;
@@ -107,6 +110,13 @@ internal static class Program
         Check(ImageEditor.Load(settingsPath) is null, "no editor should be selected initially");
         ImageEditor.Save(editor, settingsPath);
         Check(ImageEditor.Load(settingsPath) == editor, "editor choice should persist");
+        File.WriteAllText(settingsPath, System.Text.Json.JsonSerializer.Serialize(new { ImageEditorPath = editor }));
+        Check(ImageEditor.LoadSelection(settingsPath)?.EditorPath == editor, "older editor settings should still load");
+        ImageEditor.SaveHandler("Example.ImageHandler", "Example editor", settingsPath);
+        var chosenHandler = ImageEditor.LoadSelection(settingsPath);
+        Check(chosenHandler?.HandlerName == "Example.ImageHandler" && chosenHandler.DisplayName == "Example editor" &&
+              chosenHandler.EditorPath is null, "registered program choice should persist without an executable path");
+        ImageEditor.Save(editor, settingsPath);
         var start = ImageEditor.CreateStartInfo(editor, image);
         Check(start.FileName == editor && start.ArgumentList.Count == 1 && start.ArgumentList[0] == image &&
               start.UseShellExecute, "image path should be passed as one argument, including spaces and Unicode");
@@ -116,6 +126,46 @@ internal static class Program
             "missing editor should not be saved");
         ExpectFailure(() => ImageEditor.CreateStartInfo(editor, Path.Combine(_folder, "missing.png")),
             "missing image should not be launched");
+    }
+
+    private static void ImagePrograms()
+    {
+        foreach (var extension in new[] { ".png", ".jpg" })
+        {
+            var loading = ShellImageHandlers.ListAsync(extension);
+            Check(ReferenceEquals(loading, ShellImageHandlers.ListAsync(extension)), "program lists should be reused per image type");
+            var handlers = loading.GetAwaiter().GetResult();
+            Check(handlers.Count > 0, $"Windows should list programs for {extension}");
+            Check(handlers.All(handler => !string.IsNullOrWhiteSpace(handler.Name) &&
+                                          !string.IsNullOrWhiteSpace(handler.DisplayName)),
+                "Open With programs should have identifiers and display names");
+            Check(handlers.Select(handler => handler.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() == handlers.Count,
+                "Open With menu should not repeat a program");
+        }
+        Check(ShellImageHandlers.Matches(new ShellImageHandlers.Handler(@"C:\Apps\Paint_2\mspaint.exe", "Paint", true),
+                @"C:\Apps\Paint_1\mspaint.exe", "Paint"), "updated packaged apps should keep the saved choice");
+        Check(!ShellImageHandlers.Matches(new ShellImageHandlers.Handler(@"C:\Apps\Other\mspaint.exe", "Other", true),
+                @"C:\Apps\Paint\mspaint.exe", "Paint"), "a different program must not inherit the saved choice");
+    }
+
+    private static void OpenWithSmoke()
+    {
+        var paint = ShellImageHandlers.List(".png").First(handler =>
+            handler.Name.Contains("mspaint.exe", StringComparison.OrdinalIgnoreCase));
+        var image = Path.Combine(_folder, "open-with-smoke.png");
+        using (var bitmap = new Bitmap(16, 16)) bitmap.Save(image, ImageFormat.Png);
+        var existing = System.Diagnostics.Process.GetProcessesByName("mspaint").Select(process => process.Id).ToHashSet();
+        Check(existing.Count == 0, "close Paint before running the optional launch smoke test");
+        try
+        {
+            ShellImageHandlers.Open(".png", paint.Name, paint.DisplayName, image);
+            Thread.Sleep(1500);
+        }
+        finally
+        {
+            foreach (var process in System.Diagnostics.Process.GetProcessesByName("mspaint"))
+                if (!existing.Contains(process.Id)) process.Kill();
+        }
     }
 
     private static void Word()
@@ -253,6 +303,14 @@ internal static class Program
             preview.ShowFile(path);
             Check(preview.IsVisible, "preview should open");
             Check(preview.CanEditImage, "image preview should show editor controls");
+            preview.ChangeProgramButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            for (var attempt = 0; attempt < 10 && preview.EditorMenu?.Items.Count <= 2; attempt++)
+                PumpDispatcher(TimeSpan.FromMilliseconds(100));
+            var editorMenu = preview.EditorMenu;
+            Check(editorMenu?.IsOpen == true && editorMenu.Items.OfType<MenuItem>()
+                .Any(item => Equals(item.Header, ShellImageHandlers.ListAsync(".png").GetAwaiter().GetResult()[0].DisplayName)),
+                "Change program should show Windows Open With choices");
+            editorMenu!.IsOpen = false;
             Check(preview.Topmost, "preview should appear above other windows");
             other.Show();
             other.Activate();

@@ -41,6 +41,8 @@ internal sealed class PreviewWindow : Window
     internal bool IsChoosingEditor => _editorMenuOpen || _editorDialogOpen;
     internal bool IsEditorButtonFocused => _editButton.IsKeyboardFocusWithin || _changeEditorButton.IsKeyboardFocusWithin;
     internal bool CanEditImage => _editButton.Visibility == Visibility.Visible;
+    internal WpfButton ChangeProgramButton => _changeEditorButton;
+    internal WpfContextMenu? EditorMenu { get; private set; }
 
     public PreviewWindow()
     {
@@ -93,7 +95,7 @@ internal sealed class PreviewWindow : Window
         _editButton.Click += (_, _) => OpenImageInEditor();
         Grid.SetColumn(_editButton, 1);
         footer.Children.Add(_editButton);
-        _changeEditorButton = MakeFooterButton("Change editor");
+        _changeEditorButton = MakeFooterButton("Change program");
         _changeEditorButton.Click += (_, _) => ShowEditorChoices(_changeEditorButton);
         _changeEditorButton.Margin = new Thickness(8, 0, 0, 0);
         Grid.SetColumn(_changeEditorButton, 2);
@@ -146,8 +148,9 @@ internal sealed class PreviewWindow : Window
         if (IsLikelyImage(ext))
         {
             _currentImagePath = path;
-            var chosenEditor = ImageEditor.Load();
-            _editButton.Content = chosenEditor is null ? "Edit image" : $"Edit in {ImageEditor.DisplayName(chosenEditor)}";
+            _ = ShellImageHandlers.ListAsync(ext);
+            var chosenEditor = ImageEditor.LoadSelection();
+            _editButton.Content = chosenEditor is null ? "Open with…" : $"Open in {chosenEditor.DisplayName}";
             _editButton.Visibility = Visibility.Visible;
             _changeEditorButton.Visibility = Visibility.Visible;
         }
@@ -212,31 +215,24 @@ internal sealed class PreviewWindow : Window
     private void OpenImageInEditor()
     {
         if (_currentImagePath is null) return;
-        var editor = ImageEditor.Load();
+        var editor = ImageEditor.LoadSelection();
         if (editor is null) ShowEditorChoices(_editButton);
         else LaunchEditor(editor);
     }
 
-    private void ShowEditorChoices(WpfButton anchor)
+    private async void ShowEditorChoices(WpfButton anchor)
     {
         if (_currentImagePath is null) return;
+        var imagePath = _currentImagePath;
         var menu = new WpfContextMenu
         {
             PlacementTarget = anchor,
             Background = new SolidColorBrush(Color.FromRgb(38, 43, 51)),
-            Foreground = Brushes.White
+            Foreground = Brushes.White,
+            MaxHeight = 460
         };
-        var paint = ImageEditor.FindPaint();
-        if (paint is not null)
-        {
-            var paintItem = new WpfMenuItem { Header = "Paint" };
-            paintItem.Click += (_, _) =>
-            {
-                menu.IsOpen = false;
-                Dispatcher.BeginInvoke(() => ChooseEditor(paint));
-            };
-            menu.Items.Add(paintItem);
-        }
+        EditorMenu = menu;
+        menu.Items.Add(new WpfMenuItem { Header = "Finding available programs…", IsEnabled = false });
         var browseItem = new WpfMenuItem { Header = "Choose another program…" };
         browseItem.Click += (_, _) =>
         {
@@ -247,6 +243,44 @@ internal sealed class PreviewWindow : Window
         menu.Opened += (_, _) => _editorMenuOpen = true;
         menu.Closed += (_, _) => _editorMenuOpen = false;
         menu.IsOpen = true;
+
+        var handlers = await ShellImageHandlers.ListAsync(Path.GetExtension(imagePath));
+        if (!menu.IsOpen || _currentImagePath != imagePath) return;
+        menu.Items.Clear();
+        var current = ImageEditor.LoadSelection();
+        var showedOther = false;
+        foreach (var handler in handlers)
+        {
+            if (!handler.Recommended && !showedOther && menu.Items.Count > 0)
+            {
+                menu.Items.Add(new Separator());
+                showedOther = true;
+            }
+            var item = new WpfMenuItem
+            {
+                Header = handler.DisplayName,
+                IsChecked = current?.HandlerName is { } name && ShellImageHandlers.Matches(handler, name, current.DisplayName)
+            };
+            item.Click += (_, _) =>
+            {
+                menu.IsOpen = false;
+                Dispatcher.BeginInvoke(() => ChooseHandler(handler));
+            };
+            menu.Items.Add(item);
+        }
+        var paint = ImageEditor.FindPaint();
+        if (paint is not null && !handlers.Any(handler => handler.Name.Contains("mspaint", StringComparison.OrdinalIgnoreCase)))
+        {
+            var paintItem = new WpfMenuItem { Header = "Paint" };
+            paintItem.Click += (_, _) =>
+            {
+                menu.IsOpen = false;
+                Dispatcher.BeginInvoke(() => ChooseEditor(paint));
+            };
+            menu.Items.Add(paintItem);
+        }
+        if (menu.Items.Count > 0) menu.Items.Add(new Separator());
+        menu.Items.Add(browseItem);
     }
 
     private void BrowseForEditor()
@@ -271,8 +305,9 @@ internal sealed class PreviewWindow : Window
         try
         {
             ImageEditor.Save(editorPath);
-            _editButton.Content = $"Edit in {ImageEditor.DisplayName(editorPath)}";
-            LaunchEditor(editorPath);
+            var selection = ImageEditor.LoadSelection()!;
+            _editButton.Content = $"Open in {selection.DisplayName}";
+            LaunchEditor(selection);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -280,17 +315,38 @@ internal sealed class PreviewWindow : Window
         }
     }
 
-    private void LaunchEditor(string editorPath)
+    private void ChooseHandler(ShellImageHandlers.Handler handler)
+    {
+        try
+        {
+            ImageEditor.SaveHandler(handler.Name, handler.DisplayName);
+            _editButton.Content = $"Open in {handler.DisplayName}";
+            LaunchEditor(new ImageEditor.Selection(null, handler.Name, handler.DisplayName));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            System.Windows.MessageBox.Show(this, error.Message, "Could not save program choice");
+        }
+    }
+
+    private void LaunchEditor(ImageEditor.Selection selection)
     {
         if (_currentImagePath is null) return;
         try
         {
-            Process.Start(ImageEditor.CreateStartInfo(editorPath, _currentImagePath));
+            if (selection.HandlerName is { } handlerName)
+                ShellImageHandlers.Open(Path.GetExtension(_currentImagePath), handlerName, selection.DisplayName, _currentImagePath);
+            else if (selection.EditorPath is { } editorPath)
+                Process.Start(ImageEditor.CreateStartInfo(editorPath, _currentImagePath));
             Hide();
         }
-        catch (Exception error) when (error is IOException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        catch (FileNotFoundException) when (selection.HandlerName is not null)
         {
-            System.Windows.MessageBox.Show(this, error.Message, "Could not open image editor");
+            ShowEditorChoices(_editButton);
+        }
+        catch (Exception error) when (error is IOException or InvalidOperationException or System.ComponentModel.Win32Exception or COMException)
+        {
+            System.Windows.MessageBox.Show(this, error.Message, "Could not open image program");
         }
     }
 
