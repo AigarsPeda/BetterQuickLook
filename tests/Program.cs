@@ -6,6 +6,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
+using System.Windows.Controls.Primitives;
+using WpfScrollBar = System.Windows.Controls.Primitives.ScrollBar;
 using System.Windows.Threading;
 using BetterQuickLook;
 
@@ -240,6 +242,10 @@ internal static class Program
         var path = Path.Combine(_folder, "visible.png");
         using (var image = new Bitmap(20, 20)) image.Save(path, ImageFormat.Png);
         var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        app.Resources.MergedDictionaries.Add(new ResourceDictionary
+        {
+            Source = new Uri("/BetterQuickLook;component/ScrollBarTheme.xaml", UriKind.Relative)
+        });
         var preview = new PreviewWindow();
         var other = new Window { Width = 100, Height = 100, ShowInTaskbar = false };
         try
@@ -270,13 +276,21 @@ internal static class Program
             Check(ContainsText(preview, "SIZE") && ContainsText(preview, "CONTENTS"),
                 "folder preview should show size and item count fields");
             var json = Path.Combine(_folder, "window.json");
-            File.WriteAllText(json, "{\"ready\":true}");
+            File.WriteAllText(json, "{\"items\":[" + string.Join(',', Enumerable.Range(0, 300).Select(i => $"{{\"number\":{i}}}")) + "]}");
             preview.Hide();
             preview.ShowFile(json);
             Check(!preview.CanEditImage, "JSON preview should not show editor controls");
             for (var attempt = 0; attempt < 10 && !ContainsText(preview, json); attempt++)
                 PumpDispatcher(TimeSpan.FromMilliseconds(100));
             Check(ContainsText(preview, json), "JSON files should open the JSON preview view");
+            PumpDispatcher(TimeSpan.FromMilliseconds(100));
+            var scrollBar = FindVisual<WpfScrollBar>(preview, bar => bar.Orientation == System.Windows.Controls.Orientation.Vertical && bar.IsVisible);
+            Check(scrollBar is not null && scrollBar.ActualWidth <= 12, "JSON preview should use the narrow themed scrollbar");
+            var track = scrollBar!.Template.FindName("PART_Track", scrollBar) as Track;
+            Check(track is not null && scrollBar.Maximum > scrollBar.Minimum, "themed scrollbar must keep its draggable track");
+            var thumb = FindVisual<Border>(track!.Thumb, border => border.Background is SolidColorBrush);
+            Check(thumb?.Background is SolidColorBrush brush && brush.Color == System.Windows.Media.Color.FromRgb(98, 113, 133),
+                "JSON preview scrollbar thumb should use the dark theme color");
         }
         finally
         {
@@ -293,6 +307,14 @@ internal static class Program
         for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
             if (ContainsText(VisualTreeHelper.GetChild(root, i), value)) return true;
         return false;
+    }
+
+    private static T? FindVisual<T>(DependencyObject root, Func<T, bool> matches) where T : DependencyObject
+    {
+        if (root is T item && matches(item)) return item;
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+            if (FindVisual(VisualTreeHelper.GetChild(root, i), matches) is { } child) return child;
+        return null;
     }
 
     private static void PumpDispatcher(TimeSpan duration)
