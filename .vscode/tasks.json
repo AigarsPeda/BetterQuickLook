@@ -1,0 +1,41 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "problemMatcher": "$msCompile",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "${workspaceFolder}/src/BetterQuickLook.csproj",
+        "-c",
+        "Debug",
+        "-r",
+        "win-x86"
+      ],
+      "type": "process",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "test",
+      "problemMatcher": "$msCompile",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "${workspaceFolder}/tests/BetterQuickLook.Tests.csproj",
+        "-c",
+        "Release",
+        "-r",
+        "win-x86",
+        "--",
+        "--no-ui"
+      ],
+      "type": "process",
+      "group": "test"
+    }
+  ]
+}

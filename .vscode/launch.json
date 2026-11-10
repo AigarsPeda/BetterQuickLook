@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "console": "internalConsole",
+      "args": [],
+      "name": "BetterQuickLook",
+      "request": "launch",
+      "type": "coreclr",
+      "stopAtEntry": false,
+      "program": "${workspaceFolder}/src/bin/Debug/net9.0-windows/win-x86/BetterQuickLook.dll",
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "build"
+    }
+  ]
+}
