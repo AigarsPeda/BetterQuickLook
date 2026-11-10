@@ -230,11 +230,19 @@ internal sealed class PreviewWindow : Window
         if (paint is not null)
         {
             var paintItem = new WpfMenuItem { Header = "Paint" };
-            paintItem.Click += (_, _) => ChooseEditor(paint);
+            paintItem.Click += (_, _) =>
+            {
+                menu.IsOpen = false;
+                Dispatcher.BeginInvoke(() => ChooseEditor(paint));
+            };
             menu.Items.Add(paintItem);
         }
         var browseItem = new WpfMenuItem { Header = "Choose another program…" };
-        browseItem.Click += (_, _) => BrowseForEditor();
+        browseItem.Click += (_, _) =>
+        {
+            menu.IsOpen = false;
+            Dispatcher.BeginInvoke(BrowseForEditor);
+        };
         menu.Items.Add(browseItem);
         menu.Opened += (_, _) => _editorMenuOpen = true;
         menu.Closed += (_, _) => _editorMenuOpen = false;
