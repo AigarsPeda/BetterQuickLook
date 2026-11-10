@@ -33,11 +33,14 @@ internal static class FileOpener
             ? new Selection(path, null, DisplayName(path)) : null;
     }
 
-    internal static void SaveExecutable(string extension, string executablePath, string? settingsPath = null)
+    internal static void SaveExecutable(string extension, string executablePath, string? settingsPath = null) =>
+        SaveSelection(extension, ExecutableSelection(executablePath), settingsPath);
+
+    internal static Selection ExecutableSelection(string executablePath)
     {
         if (!File.Exists(executablePath) || !Path.GetExtension(executablePath).Equals(".exe", StringComparison.OrdinalIgnoreCase))
             throw new FileNotFoundException("Choose a program executable (.exe).", executablePath);
-        SaveSelection(extension, new Selection(executablePath, null, DisplayName(executablePath)), settingsPath);
+        return new Selection(executablePath, null, DisplayName(executablePath));
     }
 
     internal static void SaveHandler(string extension, string handlerName, string displayName, string? settingsPath = null)
@@ -47,7 +50,7 @@ internal static class FileOpener
         SaveSelection(extension, new Selection(null, handlerName, displayName), settingsPath);
     }
 
-    private static void SaveSelection(string extension, Selection selection, string? settingsPath)
+    internal static void SaveSelection(string extension, Selection selection, string? settingsPath)
     {
         var path = settingsPath ?? SettingsPath;
         var settings = ReadSettings(path);

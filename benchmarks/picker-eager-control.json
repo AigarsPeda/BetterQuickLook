@@ -1,0 +1,171 @@
+{
+  "Runtime": "9.0.22",
+  "OS": "Microsoft Windows NT 10.0.26200.0",
+  "Bitness": 32,
+  "SavedApp": "BetterScreenShot",
+  "HandlerCount": 13,
+  "Samples": [
+    {
+      "Saved": false,
+      "Result": {
+        "PreviewMs": 37.667,
+        "MenuMs": 196.4596,
+        "PreviewAllocatedBytes": 175512,
+        "PreviewCpuMs": 218.75
+      }
+    },
+    {
+      "Saved": true,
+      "Result": {
+        "PreviewMs": 99.9091,
+        "MenuMs": 169.5254,
+        "PreviewAllocatedBytes": 289196,
+        "PreviewCpuMs": 296.875
+      }
+    },
+    {
+      "Saved": false,
+      "Result": {
+        "PreviewMs": 40.8646,
+        "MenuMs": 110.1678,
+        "PreviewAllocatedBytes": 174836,
+        "PreviewCpuMs": 171.875
+      }
+    },
+    {
+      "Saved": true,
+      "Result": {
+        "PreviewMs": 74.1434,
+        "MenuMs": 121.0458,
+        "PreviewAllocatedBytes": 311976,
+        "PreviewCpuMs": 203.125
+      }
+    },
+    {
+      "Saved": false,
+      "Result": {
+        "PreviewMs": 38.8557,
+        "MenuMs": 172.3703,
+        "PreviewAllocatedBytes": 199660,
+        "PreviewCpuMs": 140.625
+      }
+    },
+    {
+      "Saved": true,
+      "Result": {
+        "PreviewMs": 131.0116,
+        "MenuMs": 177.3977,
+        "PreviewAllocatedBytes": 319784,
+        "PreviewCpuMs": 437.5
+      }
+    },
+    {
+      "Saved": false,
+      "Result": {
+        "PreviewMs": 47.3354,
+        "MenuMs": 122.2895,
+        "PreviewAllocatedBytes": 174832,
+        "PreviewCpuMs": 203.125
+      }
+    },
+    {
+      "Saved": true,
+      "Result": {
+        "PreviewMs": 87.5151,
+        "MenuMs": 114.205,
+        "PreviewAllocatedBytes": 313344,
+        "PreviewCpuMs": 187.5
+      }
+    },
+    {
+      "Saved": false,
+      "Result": {
+        "PreviewMs": 53.269,
+        "MenuMs": 175.599,
+        "PreviewAllocatedBytes": 213476,
+        "PreviewCpuMs": 250
+      }
+    },
+    {
+      "Saved": true,
+      "Result": {
+        "PreviewMs": 127.6125,
+        "MenuMs": 135.5764,
+        "PreviewAllocatedBytes": 321984,
+        "PreviewCpuMs": 312.5
+      }
+    },
+    {
+      "Saved": false,
+      "Result": {
+        "PreviewMs": 44.1262,
+        "MenuMs": 126.2408,
+        "PreviewAllocatedBytes": 204552,
+        "PreviewCpuMs": 218.75
+      }
+    },
+    {
+      "Saved": true,
+      "Result": {
+        "PreviewMs": 98.8087,
+        "MenuMs": 111.9164,
+        "PreviewAllocatedBytes": 345564,
+        "PreviewCpuMs": 265.625
+      }
+    },
+    {
+      "Saved": false,
+      "Result": {
+        "PreviewMs": 49.9794,
+        "MenuMs": 155.5507,
+        "PreviewAllocatedBytes": 180208,
+        "PreviewCpuMs": 156.25
+      }
+    },
+    {
+      "Saved": true,
+      "Result": {
+        "PreviewMs": 94.8212,
+        "MenuMs": 117.4127,
+        "PreviewAllocatedBytes": 319116,
+        "PreviewCpuMs": 250
+      }
+    },
+    {
+      "Saved": false,
+      "Result": {
+        "PreviewMs": 76.2811,
+        "MenuMs": 161.149,
+        "PreviewAllocatedBytes": 180968,
+        "PreviewCpuMs": 296.875
+      }
+    },
+    {
+      "Saved": true,
+      "Result": {
+        "PreviewMs": 86.6969,
+        "MenuMs": 153.4286,
+        "PreviewAllocatedBytes": 321216,
+        "PreviewCpuMs": 187.5
+      }
+    },
+    {
+      "Saved": false,
+      "Result": {
+        "PreviewMs": 56.7198,
+        "MenuMs": 241.8119,
+        "PreviewAllocatedBytes": 204336,
+        "PreviewCpuMs": 203.125
+      }
+    },
+    {
+      "Saved": true,
+      "Result": {
+        "PreviewMs": 85.1404,
+        "MenuMs": 176.5546,
+        "PreviewAllocatedBytes": 296324,
+        "PreviewCpuMs": 234.375
+      }
+    }
+  ]
+}

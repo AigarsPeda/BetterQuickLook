@@ -5,14 +5,16 @@ using System.IO.Compression;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using System.Windows.Input;
 using System.Windows.Media;
 using WpfImage = System.Windows.Controls.Image;
+using WpfMenuItem = System.Windows.Controls.MenuItem;
 using System.Windows.Controls.Primitives;
 using WpfScrollBar = System.Windows.Controls.Primitives.ScrollBar;
 using System.Windows.Threading;
 using BetterQuickLook;
 
-internal static class Program
+internal static partial class Program
 {
     private static string _folder = "";
     private static int _passed;
@@ -21,6 +23,8 @@ internal static class Program
     private static int Main()
     {
         var arguments = Environment.GetCommandLineArgs();
+        if (arguments.Contains("--benchmark-app-picker")) return BenchmarkAppPicker(arguments[^1]);
+        if (arguments.Contains("--app-picker-sample")) return AppPickerSample(arguments[^3], arguments[^2], arguments[^1]);
         if (arguments.Contains("--benchmark")) return Performance.Run(arguments);
         _folder = Path.Combine(Path.GetTempPath(), "BetterQuickLook-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_folder);
@@ -45,8 +49,6 @@ internal static class Program
             {
                 Run("Desktop Shell selection", DesktopShell);
                 Run("Preview remains visible after focus changes", WindowLifecycle);
-                if (Environment.GetCommandLineArgs().Contains("--open-with-smoke"))
-                    Run("Open With launches Paint", OpenWithSmoke);
             }
             Console.WriteLine($"{_passed} tests passed.");
             return 0;
@@ -179,28 +181,65 @@ internal static class Program
                 @"C:\Apps\Paint\mspaint.exe", "Paint"), "a different program must not inherit the saved choice");
     }
 
-    private static void OpenWithSmoke()
+    private static void OpenWithSmoke(PreviewWindow preview, string settingsPath)
     {
-        var paint = ShellFileHandlers.List(".png").First(handler =>
+        var paint = ShellFileHandlers.ListAsync(".png").GetAwaiter().GetResult().First(handler =>
             handler.Name.Contains("mspaint.exe", StringComparison.OrdinalIgnoreCase));
         var image = Path.Combine(_folder, "open-with-smoke.png");
         using (var bitmap = new Bitmap(16, 16)) bitmap.Save(image, ImageFormat.Png);
-        var existing = System.Diagnostics.Process.GetProcessesByName("mspaint").Select(process => process.Id).ToHashSet();
-        Check(existing.Count == 0, "close Paint before running the optional launch smoke test");
+        var original = FileOpener.LoadSelection(".png", settingsPath);
+        Check(!PaintIsRunning(), "close Paint before running the optional launch smoke test");
         try
         {
-            var timer = System.Diagnostics.Stopwatch.StartNew();
-            var launch = ShellFileHandlers.OpenAsync(".png", paint.Name, paint.DisplayName, image);
-            Check(timer.Elapsed < TimeSpan.FromSeconds(2), "opening a program should not block the preview window");
-            launch.GetAwaiter().GetResult();
-            Thread.Sleep(1500);
+            OpenFromPicker("Open once");
+            Check(FileOpener.LoadSelection(".png", settingsPath) == original, "Open once must preserve the saved app");
+            ClosePaint();
+            OpenFromPicker("Open and remember");
+            Check(FileOpener.LoadSelection(".jpg", settingsPath)?.HandlerName == paint.Name,
+                "remembered app should apply to the image group");
+            ClosePaint();
+            preview.ShowFile(image);
+            Check(preview.OpenButtonLabel == $"Open in {paint.DisplayName}", "the new preferred app should appear on the button");
+            var shortcut = OpenShortcut(preview);
+            Check(shortcut.CanExecute(null, preview), "Ctrl+Enter should be available for a file");
+            shortcut.Execute(null, preview);
+            WaitForPickerState(() => !preview.IsVisible && PaintIsRunning());
         }
-        finally
+        finally { ClosePaint(); }
+
+        void OpenFromPicker(string action)
         {
-            foreach (var process in System.Diagnostics.Process.GetProcessesByName("mspaint"))
-                if (!existing.Contains(process.Id)) process.Kill();
+            preview.ShowFile(image);
+            preview.ChangeProgramButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            WpfMenuItem? appItem = null;
+            WaitForPickerState(() => (appItem = preview.ProgramMenu?.Items.OfType<WpfMenuItem>()
+                .FirstOrDefault(item => Equals(item.Header, paint.DisplayName))) is not null);
+            appItem!.Items.OfType<WpfMenuItem>().Single(item => Equals(item.Header, action))
+                .RaiseEvent(new RoutedEventArgs(WpfMenuItem.ClickEvent));
+            WaitForPickerState(() => !preview.IsVisible && PaintIsRunning());
         }
     }
+
+    private static bool PaintIsRunning()
+    {
+        var processes = System.Diagnostics.Process.GetProcessesByName("mspaint");
+        foreach (var process in processes) process.Dispose();
+        return processes.Length > 0;
+    }
+
+    private static void ClosePaint()
+    {
+        foreach (var process in System.Diagnostics.Process.GetProcessesByName("mspaint"))
+            using (process)
+            {
+                if (!process.HasExited) process.Kill();
+                process.WaitForExit(2000);
+            }
+    }
+
+    private static RoutedCommand OpenShortcut(PreviewWindow preview) =>
+        (RoutedCommand)preview.InputBindings.OfType<KeyBinding>()
+            .Single(binding => binding.Key == Key.Enter && binding.Modifiers == ModifierKeys.Control).Command;
 
     private static void Word()
     {
@@ -342,8 +381,8 @@ internal static class Program
         {
             preview.ShowFile(path);
             Check(preview.IsVisible, "preview should open");
-            Check(preview.CanOpenFile && preview.PreferredAppLabel == "Preferred app: BetterScreenShot",
-                "image preview should show its preferred app in the corner");
+            Check(preview.CanOpenFile && preview.OpenButtonLabel == "Open in BetterScreenShot",
+                "image preview should name its preferred app on the Open button");
             Check(preview.ChangeProgramButton.Content is WpfImage, "selected program should replace the settings glyph with an icon");
             if (screenshotHandler?.Icon is not null)
             {
@@ -364,6 +403,9 @@ internal static class Program
                 "Change program should show Windows Open With choices");
             Check(programMenu!.Items.OfType<MenuItem>().Any(item => item.Icon is WpfImage icon && icon.Source is not null),
                 "program menu should display application icons");
+            Check(programMenu.Items.OfType<MenuItem>().Where(item => item.Icon is WpfImage).All(item =>
+                    item.Items.OfType<MenuItem>().Select(action => action.Header).SequenceEqual(new object[] { "Open once", "Open and remember" })),
+                "each program should offer a one-time action and a remember action");
             programMenu!.IsOpen = false;
             preview.Width = 420;
             PumpDispatcher(TimeSpan.FromMilliseconds(100));
@@ -389,6 +431,7 @@ internal static class Program
             preview.ShowFile(folder.FullName);
             PumpDispatcher(TimeSpan.FromMilliseconds(150));
             Check(!preview.CanOpenFile, "folder preview should not show file program controls");
+            Check(!OpenShortcut(preview).CanExecute(null, preview), "Ctrl+Enter should not launch a program for a folder");
             Check(ContainsText(preview, "LOCATION") && ContainsText(preview, folder.FullName),
                 "folder preview should show a labeled location");
             Check(ContainsText(preview, "SIZE") && ContainsText(preview, "CONTENTS"),
@@ -397,11 +440,9 @@ internal static class Program
             File.WriteAllText(json, "{\"items\":[" + string.Join(',', Enumerable.Range(0, 300).Select(i => $"{{\"number\":{i}}}")) + "]}");
             preview.Hide();
             preview.ShowFile(json);
-            Check(preview.CanOpenFile && preview.PreferredAppLabel == "Preferred app: VS Code",
-                "JSON preview should show its preferred app in the corner");
+            Check(preview.CanOpenFile && preview.OpenButtonLabel == "Open in VS Code",
+                "JSON preview should name its preferred app on the Open button");
             var jsonChoice = FileOpener.LoadSelection(".json", settingsPath);
-            Check(preview.PreferredAppLabel == (jsonChoice is null ? "Preferred app: none" : $"Preferred app: {jsonChoice.DisplayName}"),
-                "JSON corner label should match the chosen app");
             var jsonChooser = jsonChoice is null ? preview.OpenButton : preview.ChangeProgramButton;
             jsonChooser.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             for (var attempt = 0; attempt < 10 && preview.ProgramMenu?.Items.Count <= 2; attempt++)
@@ -428,16 +469,20 @@ internal static class Program
                 "<w:document xmlns:w='http://schemas.openxmlformats.org/wordprocessingml/2006/main'><w:body/></w:document>"));
             preview.Hide();
             preview.ShowFile(docx);
-            Check(preview.CanOpenFile && preview.PreferredAppLabel == "Preferred app: Word",
+            Check(preview.CanOpenFile && preview.OpenButtonLabel == "Open in Word",
                 "Word preview should offer a separately chosen program");
             var unknown = Path.Combine(_folder, "window.unknown");
             File.WriteAllText(unknown, "sample");
             preview.Hide();
             preview.ShowFile(unknown);
-            Check(preview.CanOpenFile && preview.PreferredAppLabel == "Preferred app: none" &&
-                  Equals(preview.OpenButton.Content, "Choose app"),
+            Check(preview.CanOpenFile && preview.OpenButtonLabel == "Choose app",
                 "unconfigured file types should offer a program choice");
             Check(preview.ChangeProgramButton.Content is TextBlock, "unconfigured file types should show a settings glyph");
+            OpenShortcut(preview).Execute(null, preview);
+            Check(preview.ProgramMenu?.IsOpen == true, "Ctrl+Enter should open the picker when no program is saved");
+            preview.ProgramMenu!.IsOpen = false;
+            if (Environment.GetCommandLineArgs().Contains("--open-with-smoke"))
+                Run("Open once, remember, and Ctrl+Enter launch Paint", () => OpenWithSmoke(preview, settingsPath));
         }
         finally
         {

@@ -27,7 +27,7 @@ internal sealed class PreviewWindow : Window
     private readonly TextBlock _title;
     private readonly TextBlock _details;
     private readonly Grid _body;
-    private readonly TextBlock _preferredApp;
+    private readonly TextBlock _openLabel;
     private readonly WpfButton _openButton;
     private readonly WpfButton _changeProgramButton;
     private readonly string? _settingsPath;
@@ -36,16 +36,15 @@ internal sealed class PreviewWindow : Window
     private CancellationTokenSource? _folderScan;
     private int _request;
     private bool _allowClose;
-    private bool _programMenuOpen;
     private bool _programDialogOpen;
     private string? _currentFilePath;
     private int _iconRequest;
     private int _launchRequest;
 
-    internal bool IsChoosingProgram => _programMenuOpen || _programDialogOpen;
+    internal bool IsChoosingProgram => ProgramMenu?.IsOpen == true || _programDialogOpen;
     internal bool IsProgramButtonFocused => _openButton.IsKeyboardFocusWithin || _changeProgramButton.IsKeyboardFocusWithin;
     internal bool CanOpenFile => _openButton.Visibility == Visibility.Visible;
-    internal string PreferredAppLabel => _preferredApp.Text;
+    internal string OpenButtonLabel => _openLabel.Text;
     internal WpfButton OpenButton => _openButton;
     internal WpfButton ChangeProgramButton => _changeProgramButton;
     internal WpfContextMenu? ProgramMenu { get; private set; }
@@ -64,6 +63,10 @@ internal sealed class PreviewWindow : Window
         Foreground = Brushes.White;
         ShowInTaskbar = true;
         KeyDown += (_, e) => { if (e.Key is Key.Escape or Key.Space) Hide(); };
+        var openCommand = new RoutedCommand();
+        InputBindings.Add(new KeyBinding(openCommand, Key.Enter, ModifierKeys.Control));
+        CommandBindings.Add(new CommandBinding(openCommand, (_, _) => OpenCurrentFile(),
+            (_, e) => e.CanExecute = CanOpenCurrentFile));
 
         var root = new Grid();
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -89,7 +92,6 @@ internal sealed class PreviewWindow : Window
         footer.ColumnDefinitions.Add(new ColumnDefinition());
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var hint = new TextBlock
         {
             Text = "Space or Esc to close  •  Select a file in File Explorer to preview it",
@@ -99,21 +101,12 @@ internal sealed class PreviewWindow : Window
             VerticalAlignment = VerticalAlignment.Center
         };
         footer.Children.Add(hint);
-        _preferredApp = new TextBlock
-        {
-            Foreground = new SolidColorBrush(Color.FromRgb(166, 174, 187)),
-            FontSize = 12,
-            VerticalAlignment = VerticalAlignment.Center,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxWidth = 190,
-            Margin = new Thickness(8, 0, 10, 0),
-            Visibility = Visibility.Collapsed
-        };
-        Grid.SetColumn(_preferredApp, 1);
-        footer.Children.Add(_preferredApp);
-        _openButton = MakeFooterButton("Choose app");
+        _openLabel = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis };
+        _openButton = MakeFooterButton("");
+        _openButton.Content = _openLabel;
+        _openButton.MaxWidth = 250;
         _openButton.Click += (_, _) => OpenCurrentFile();
-        Grid.SetColumn(_openButton, 2);
+        Grid.SetColumn(_openButton, 1);
         footer.Children.Add(_openButton);
         _changeProgramButton = MakeFooterButton("");
         _changeProgramButton.Click += (_, _) => ShowProgramChoices(_changeProgramButton);
@@ -121,15 +114,11 @@ internal sealed class PreviewWindow : Window
         _changeProgramButton.MinWidth = 34;
         _changeProgramButton.MinHeight = 30;
         _changeProgramButton.Margin = new Thickness(8, 0, 0, 0);
-        Grid.SetColumn(_changeProgramButton, 3);
+        Grid.SetColumn(_changeProgramButton, 2);
         footer.Children.Add(_changeProgramButton);
         Grid.SetRow(footer, 2);
         root.Children.Add(footer);
-        SizeChanged += (_, _) =>
-        {
-            hint.Visibility = ActualWidth < 740 ? Visibility.Collapsed : Visibility.Visible;
-            _preferredApp.MaxWidth = ActualWidth < 600 ? 120 : 190;
-        };
+        SizeChanged += (_, _) => hint.Visibility = ActualWidth < 740 ? Visibility.Collapsed : Visibility.Visible;
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -147,6 +136,7 @@ internal sealed class PreviewWindow : Window
 
     public void ShowFile(string path)
     {
+        if (ProgramMenu is { } menu) menu.IsOpen = false;
         _request++;
         CancelFolderScan();
         _shellPreview?.Dispose();
@@ -157,7 +147,6 @@ internal sealed class PreviewWindow : Window
         _currentFilePath = null;
         _iconRequest++;
         _launchRequest++;
-        _preferredApp.Visibility = Visibility.Collapsed;
         _openButton.Visibility = Visibility.Collapsed;
         _changeProgramButton.Visibility = Visibility.Collapsed;
         _openButton.IsEnabled = true;
@@ -178,7 +167,6 @@ internal sealed class PreviewWindow : Window
 
         var ext = info.Extension.ToLowerInvariant();
         _currentFilePath = path;
-        _ = ShellFileHandlers.ListAsync(ext);
         RefreshPreferredApp();
         if (ext is ".json" or ".jsonc")
         {
@@ -245,28 +233,21 @@ internal sealed class PreviewWindow : Window
         var iconRequest = ++_iconRequest;
         var extension = Path.GetExtension(filePath);
         var selection = FileOpener.LoadSelection(extension, _settingsPath);
-        _preferredApp.Text = selection is null ? "Preferred app: none" : $"Preferred app: {selection.DisplayName}";
-        _preferredApp.ToolTip = _preferredApp.Text;
-        _preferredApp.Visibility = Visibility.Visible;
-        _openButton.Content = selection is null ? "Choose app" : "Open";
+        _openLabel.Text = selection is null ? "Choose app" : $"Open in {selection.DisplayName}";
+        _openButton.ToolTip = $"{_openLabel.Text} (Ctrl+Enter)";
+        System.Windows.Automation.AutomationProperties.SetName(_openButton, _openLabel.Text);
         _openButton.Visibility = Visibility.Visible;
         _changeProgramButton.Content = selection is null
             ? new TextBlock { Text = "\uE713", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 16 }
             : ProgramIcon(ProgramIcons.Fallback);
-        _changeProgramButton.ToolTip = selection is null
-            ? "Choose a program"
-            : $"Change program (currently {selection.DisplayName})";
+        _changeProgramButton.ToolTip = "Open with another app";
+        System.Windows.Automation.AutomationProperties.SetName(_changeProgramButton, "Open with another app");
         _changeProgramButton.Visibility = Visibility.Visible;
         if (selection is null) return;
 
-        BitmapSource? icon;
-        if (selection.HandlerName is { } handlerName)
-        {
-            var handlers = await ShellFileHandlers.ListAsync(extension);
-            icon = handlers.FirstOrDefault(handler => ShellFileHandlers.Matches(handler, handlerName, selection.DisplayName))?.Icon;
-            if (icon is null) icon = await ProgramIcons.ExtractAsync(handlerName);
-        }
-        else icon = await ProgramIcons.ExtractAsync(selection.ExecutablePath);
+        var icon = selection.HandlerName is { } handlerName
+            ? await ShellFileHandlers.PreferredIconAsync(extension, handlerName, selection.DisplayName)
+            : await ProgramIcons.ExtractAsync(selection.ExecutablePath);
 
         _ = Dispatcher.BeginInvoke(new Action(() =>
         {
@@ -283,10 +264,12 @@ internal sealed class PreviewWindow : Window
         Stretch = Stretch.Uniform
     };
 
+    private bool CanOpenCurrentFile => _currentFilePath is not null && _openButton.IsEnabled && !IsChoosingProgram;
+
     private void OpenCurrentFile()
     {
-        if (_currentFilePath is null) return;
-        var extension = Path.GetExtension(_currentFilePath);
+        if (!CanOpenCurrentFile || _currentFilePath is not { } filePath) return;
+        var extension = Path.GetExtension(filePath);
         var selection = FileOpener.LoadSelection(extension, _settingsPath);
         if (selection is null) ShowProgramChoices(_openButton);
         else LaunchProgram(selection);
@@ -294,8 +277,9 @@ internal sealed class PreviewWindow : Window
 
     private async void ShowProgramChoices(WpfButton anchor)
     {
-        if (_currentFilePath is null) return;
+        if (!CanOpenCurrentFile || _currentFilePath is null) return;
         var filePath = _currentFilePath;
+        var request = _request;
         var extension = Path.GetExtension(filePath);
         var menu = new WpfContextMenu
         {
@@ -307,18 +291,15 @@ internal sealed class PreviewWindow : Window
         ProgramMenu = menu;
         menu.Items.Add(new WpfMenuItem { Header = "Finding available programs…", IsEnabled = false });
         var browseItem = new WpfMenuItem { Header = "Choose another program…" };
-        browseItem.Click += (_, _) =>
-        {
-            menu.IsOpen = false;
-            Dispatcher.BeginInvoke(BrowseForProgram);
-        };
+        AddProgramActions(menu, browseItem, remember => BrowseForProgram(filePath, remember));
         menu.Items.Add(browseItem);
-        menu.Opened += (_, _) => _programMenuOpen = true;
-        menu.Closed += (_, _) => _programMenuOpen = false;
         menu.IsOpen = true;
 
         var handlers = await ShellFileHandlers.ListAsync(extension);
-        _ = Dispatcher.BeginInvoke(new Action(() => PopulateProgramMenu(menu, browseItem, filePath, extension, handlers)));
+        _ = Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (request == _request) PopulateProgramMenu(menu, browseItem, filePath, extension, handlers);
+        }));
     }
 
     private void PopulateProgramMenu(WpfContextMenu menu, WpfMenuItem browseItem, string filePath,
@@ -341,11 +322,8 @@ internal sealed class PreviewWindow : Window
                 Icon = ProgramIcon(handler.Icon ?? ProgramIcons.Fallback),
                 IsChecked = current?.HandlerName is { } name && ShellFileHandlers.Matches(handler, name, current.DisplayName)
             };
-            item.Click += (_, _) =>
-            {
-                menu.IsOpen = false;
-                Dispatcher.BeginInvoke(() => ChooseHandler(handler, filePath));
-            };
+            AddProgramActions(menu, item, remember =>
+                ChooseProgram(filePath, new FileOpener.Selection(null, handler.Name, handler.DisplayName), remember));
             menu.Items.Add(item);
         }
         var paint = IsLikelyImage(extension) ? FileOpener.FindPaint() : null;
@@ -356,11 +334,7 @@ internal sealed class PreviewWindow : Window
                 Header = "Paint",
                 Icon = ProgramIcon(ProgramIcons.Fallback)
             };
-            paintItem.Click += (_, _) =>
-            {
-                menu.IsOpen = false;
-                Dispatcher.BeginInvoke(() => ChooseExecutable(paint));
-            };
+            AddProgramActions(menu, paintItem, remember => ChooseExecutable(filePath, paint, remember));
             menu.Items.Add(paintItem);
             _ = ProgramIcons.ExtractAsync(paint).ContinueWith(task => Dispatcher.BeginInvoke(new Action(() =>
             {
@@ -372,46 +346,61 @@ internal sealed class PreviewWindow : Window
         menu.Items.Add(browseItem);
     }
 
-    private void BrowseForProgram()
+    private void AddProgramActions(WpfContextMenu menu, WpfMenuItem program, Action<bool> choose)
+    {
+        var request = _request;
+        foreach (var remember in new[] { false, true })
+        {
+            var action = new WpfMenuItem { Header = remember ? "Open and remember" : "Open once" };
+            action.Click += (_, e) =>
+            {
+                e.Handled = true;
+                menu.IsOpen = false;
+                _ = Dispatcher.BeginInvoke(() =>
+                {
+                    if (request == _request && CanOpenCurrentFile) choose(remember);
+                });
+            };
+            program.Items.Add(action);
+        }
+    }
+
+    private void BrowseForProgram(string filePath, bool remember)
     {
         _programDialogOpen = true;
         try
         {
             var dialog = new EditorFileDialog
             {
-                Title = "Choose a program",
+                Title = remember ? "Choose a program to open and remember" : "Choose a program to open once",
                 Filter = "Programs (*.exe)|*.exe",
                 CheckFileExists = true,
                 Multiselect = false
             };
-            if (dialog.ShowDialog(this) == true) ChooseExecutable(dialog.FileName);
+            if (dialog.ShowDialog(this) == true) ChooseExecutable(filePath, dialog.FileName, remember);
         }
         finally { _programDialogOpen = false; }
     }
 
-    private void ChooseExecutable(string executablePath)
+    private void ChooseExecutable(string filePath, string executablePath, bool remember)
     {
-        if (_currentFilePath is null) return;
         try
         {
-            FileOpener.SaveExecutable(Path.GetExtension(_currentFilePath), executablePath, _settingsPath);
-            RefreshPreferredApp();
-            LaunchProgram(FileOpener.LoadSelection(Path.GetExtension(_currentFilePath), _settingsPath)!);
+            ChooseProgram(filePath, FileOpener.ExecutableSelection(executablePath), remember);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            System.Windows.MessageBox.Show(this, error.Message, "Could not save program choice");
+            System.Windows.MessageBox.Show(this, error.Message, "Could not open program");
         }
     }
 
-    private void ChooseHandler(ShellFileHandlers.Handler handler, string filePath)
+    private void ChooseProgram(string filePath, FileOpener.Selection selection, bool remember)
     {
         if (_currentFilePath != filePath) return;
         try
         {
-            FileOpener.SaveHandler(Path.GetExtension(filePath), handler.Name, handler.DisplayName, _settingsPath);
-            RefreshPreferredApp();
-            LaunchProgram(new FileOpener.Selection(null, handler.Name, handler.DisplayName));
+            if (remember) FileOpener.SaveSelection(Path.GetExtension(filePath), selection, _settingsPath);
+            LaunchProgram(selection);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -426,7 +415,7 @@ internal sealed class PreviewWindow : Window
         var request = ++_launchRequest;
         _openButton.IsEnabled = false;
         _changeProgramButton.IsEnabled = false;
-        _openButton.Content = "Opening…";
+        _openLabel.Text = "Opening…";
         Task launch = selection.HandlerName is { } handlerName
             ? ShellFileHandlers.OpenAsync(Path.GetExtension(filePath), handlerName, selection.DisplayName, filePath)
             : Task.Run(() => Process.Start(FileOpener.CreateStartInfo(selection.ExecutablePath!, filePath)));
@@ -691,11 +680,11 @@ internal sealed class PreviewWindow : Window
 
     public new void Hide()
     {
+        if (ProgramMenu is { } menu) menu.IsOpen = false;
         _request++;
         _iconRequest++;
         _launchRequest++;
         _currentFilePath = null;
-        _preferredApp.Visibility = Visibility.Collapsed;
         _openButton.Visibility = Visibility.Collapsed;
         _changeProgramButton.Visibility = Visibility.Collapsed;
         _openButton.IsEnabled = true;
