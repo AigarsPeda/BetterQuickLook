@@ -25,6 +25,7 @@ internal static class Program
             Run("Active Explorer tab selection", ActiveExplorerTab);
             Run("PNG and JPEG decode at preview size", Images);
             Run("Corrupt image rejection", CorruptImage);
+            Run("Image editor preference and launch arguments", ImageEditorChoice);
             Run("Word text and empty document", Word);
             Run("Excel shared, inline, and numeric cells", Excel);
             Run("Missing and malformed document parts", InvalidDocuments);
@@ -93,6 +94,26 @@ internal static class Program
         var path = Path.Combine(_folder, "broken.png");
         File.WriteAllText(path, "not an image");
         ExpectFailure(() => PreviewWindow.DecodeImage(path), "corrupt image must fail cleanly");
+    }
+
+    private static void ImageEditorChoice()
+    {
+        var settingsPath = Path.Combine(_folder, "editor preference", "settings.json");
+        var editor = Environment.ProcessPath!;
+        var image = Path.Combine(_folder, "image with spaces ä.png");
+        File.WriteAllBytes(image, [1, 2, 3]);
+        Check(ImageEditor.Load(settingsPath) is null, "no editor should be selected initially");
+        ImageEditor.Save(editor, settingsPath);
+        Check(ImageEditor.Load(settingsPath) == editor, "editor choice should persist");
+        var start = ImageEditor.CreateStartInfo(editor, image);
+        Check(start.FileName == editor && start.ArgumentList.Count == 1 && start.ArgumentList[0] == image &&
+              start.UseShellExecute, "image path should be passed as one argument, including spaces and Unicode");
+        File.WriteAllText(settingsPath, "{invalid");
+        Check(ImageEditor.Load(settingsPath) is null, "damaged settings should prompt for an editor again");
+        ExpectFailure(() => ImageEditor.Save(Path.Combine(_folder, "missing.exe"), settingsPath),
+            "missing editor should not be saved");
+        ExpectFailure(() => ImageEditor.CreateStartInfo(editor, Path.Combine(_folder, "missing.png")),
+            "missing image should not be launched");
     }
 
     private static void Word()
@@ -225,6 +246,7 @@ internal static class Program
         {
             preview.ShowFile(path);
             Check(preview.IsVisible, "preview should open");
+            Check(preview.CanEditImage, "image preview should show editor controls");
             Check(preview.Topmost, "preview should appear above other windows");
             other.Show();
             other.Activate();
@@ -242,6 +264,7 @@ internal static class Program
             preview.Hide();
             preview.ShowFile(folder.FullName);
             PumpDispatcher(TimeSpan.FromMilliseconds(150));
+            Check(!preview.CanEditImage, "folder preview should not show editor controls");
             Check(ContainsText(preview, "LOCATION") && ContainsText(preview, folder.FullName),
                 "folder preview should show a labeled location");
             Check(ContainsText(preview, "SIZE") && ContainsText(preview, "CONTENTS"),
@@ -250,6 +273,7 @@ internal static class Program
             File.WriteAllText(json, "{\"ready\":true}");
             preview.Hide();
             preview.ShowFile(json);
+            Check(!preview.CanEditImage, "JSON preview should not show editor controls");
             for (var attempt = 0; attempt < 10 && !ContainsText(preview, json); attempt++)
                 PumpDispatcher(TimeSpan.FromMilliseconds(100));
             Check(ContainsText(preview, json), "JSON files should open the JSON preview view");

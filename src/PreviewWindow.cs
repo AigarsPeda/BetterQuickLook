@@ -1,6 +1,7 @@
 using System.IO;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -14,6 +15,10 @@ using Color = System.Windows.Media.Color;
 using Brushes = System.Windows.Media.Brushes;
 using FontFamily = System.Windows.Media.FontFamily;
 using TextBox = System.Windows.Controls.TextBox;
+using WpfButton = System.Windows.Controls.Button;
+using WpfContextMenu = System.Windows.Controls.ContextMenu;
+using WpfMenuItem = System.Windows.Controls.MenuItem;
+using EditorFileDialog = Microsoft.Win32.OpenFileDialog;
 
 namespace BetterQuickLook;
 
@@ -22,11 +27,20 @@ internal sealed class PreviewWindow : Window
     private readonly TextBlock _title;
     private readonly TextBlock _details;
     private readonly Grid _body;
+    private readonly WpfButton _editButton;
+    private readonly WpfButton _changeEditorButton;
     private ShellPreview? _shellPreview;
     private JsonPreviewView? _jsonView;
     private CancellationTokenSource? _folderScan;
     private int _request;
     private bool _allowClose;
+    private bool _editorMenuOpen;
+    private bool _editorDialogOpen;
+    private string? _currentImagePath;
+
+    internal bool IsChoosingEditor => _editorMenuOpen || _editorDialogOpen;
+    internal bool IsEditorButtonFocused => _editButton.IsKeyboardFocusWithin || _changeEditorButton.IsKeyboardFocusWithin;
+    internal bool CanEditImage => _editButton.Visibility == Visibility.Visible;
 
     public PreviewWindow()
     {
@@ -62,13 +76,28 @@ internal sealed class PreviewWindow : Window
         Grid.SetRow(_body, 1);
         root.Children.Add(_body);
 
-        var footer = new TextBlock
+        var footer = new Grid { Margin = new Thickness(22, 8, 22, 10) };
+        footer.ColumnDefinitions.Add(new ColumnDefinition());
+        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var hint = new TextBlock
         {
             Text = "Space or Esc to close  •  Select a file in File Explorer to preview it",
             Foreground = new SolidColorBrush(Color.FromRgb(130, 139, 151)),
             FontSize = 11,
-            Margin = new Thickness(22, 10, 22, 12)
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center
         };
+        footer.Children.Add(hint);
+        _editButton = MakeFooterButton("Edit image");
+        _editButton.Click += (_, _) => OpenImageInEditor();
+        Grid.SetColumn(_editButton, 1);
+        footer.Children.Add(_editButton);
+        _changeEditorButton = MakeFooterButton("Change editor");
+        _changeEditorButton.Click += (_, _) => ShowEditorChoices(_changeEditorButton);
+        _changeEditorButton.Margin = new Thickness(8, 0, 0, 0);
+        Grid.SetColumn(_changeEditorButton, 2);
+        footer.Children.Add(_changeEditorButton);
         Grid.SetRow(footer, 2);
         root.Children.Add(footer);
 
@@ -96,6 +125,9 @@ internal sealed class PreviewWindow : Window
         _body.Children.Clear();
         _jsonView?.Dispose();
         _jsonView = null;
+        _currentImagePath = null;
+        _editButton.Visibility = Visibility.Collapsed;
+        _changeEditorButton.Visibility = Visibility.Collapsed;
 
         var info = new FileInfo(path);
         _title.Text = info.Name;
@@ -111,6 +143,14 @@ internal sealed class PreviewWindow : Window
         if (Directory.Exists(path)) { ShowFolder(path); return; }
 
         var ext = info.Extension.ToLowerInvariant();
+        if (IsLikelyImage(ext))
+        {
+            _currentImagePath = path;
+            var chosenEditor = ImageEditor.Load();
+            _editButton.Content = chosenEditor is null ? "Edit image" : $"Edit in {ImageEditor.DisplayName(chosenEditor)}";
+            _editButton.Visibility = Visibility.Visible;
+            _changeEditorButton.Visibility = Visibility.Visible;
+        }
         if (ext is ".json" or ".jsonc")
         {
             ShowJson(path);
@@ -155,6 +195,95 @@ internal sealed class PreviewWindow : Window
         }
 
         ShowMessage(path);
+    }
+
+    private static WpfButton MakeFooterButton(string label) => new()
+    {
+        Content = label,
+        Visibility = Visibility.Collapsed,
+        Background = new SolidColorBrush(Color.FromRgb(50, 64, 84)),
+        Foreground = Brushes.White,
+        BorderBrush = new SolidColorBrush(Color.FromRgb(78, 96, 119)),
+        BorderThickness = new Thickness(1),
+        Padding = new Thickness(12, 6, 12, 6),
+        Cursor = System.Windows.Input.Cursors.Hand
+    };
+
+    private void OpenImageInEditor()
+    {
+        if (_currentImagePath is null) return;
+        var editor = ImageEditor.Load();
+        if (editor is null) ShowEditorChoices(_editButton);
+        else LaunchEditor(editor);
+    }
+
+    private void ShowEditorChoices(WpfButton anchor)
+    {
+        if (_currentImagePath is null) return;
+        var menu = new WpfContextMenu
+        {
+            PlacementTarget = anchor,
+            Background = new SolidColorBrush(Color.FromRgb(38, 43, 51)),
+            Foreground = Brushes.White
+        };
+        var paint = ImageEditor.FindPaint();
+        if (paint is not null)
+        {
+            var paintItem = new WpfMenuItem { Header = "Paint" };
+            paintItem.Click += (_, _) => ChooseEditor(paint);
+            menu.Items.Add(paintItem);
+        }
+        var browseItem = new WpfMenuItem { Header = "Choose another program…" };
+        browseItem.Click += (_, _) => BrowseForEditor();
+        menu.Items.Add(browseItem);
+        menu.Opened += (_, _) => _editorMenuOpen = true;
+        menu.Closed += (_, _) => _editorMenuOpen = false;
+        menu.IsOpen = true;
+    }
+
+    private void BrowseForEditor()
+    {
+        _editorDialogOpen = true;
+        try
+        {
+            var dialog = new EditorFileDialog
+            {
+                Title = "Choose an image editor",
+                Filter = "Programs (*.exe)|*.exe",
+                CheckFileExists = true,
+                Multiselect = false
+            };
+            if (dialog.ShowDialog(this) == true) ChooseEditor(dialog.FileName);
+        }
+        finally { _editorDialogOpen = false; }
+    }
+
+    private void ChooseEditor(string editorPath)
+    {
+        try
+        {
+            ImageEditor.Save(editorPath);
+            _editButton.Content = $"Edit in {ImageEditor.DisplayName(editorPath)}";
+            LaunchEditor(editorPath);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            System.Windows.MessageBox.Show(this, error.Message, "Could not save editor choice");
+        }
+    }
+
+    private void LaunchEditor(string editorPath)
+    {
+        if (_currentImagePath is null) return;
+        try
+        {
+            Process.Start(ImageEditor.CreateStartInfo(editorPath, _currentImagePath));
+            Hide();
+        }
+        catch (Exception error) when (error is IOException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            System.Windows.MessageBox.Show(this, error.Message, "Could not open image editor");
+        }
     }
 
     private void ShowJson(string path)
@@ -406,6 +535,9 @@ internal sealed class PreviewWindow : Window
     public new void Hide()
     {
         _request++;
+        _currentImagePath = null;
+        _editButton.Visibility = Visibility.Collapsed;
+        _changeEditorButton.Visibility = Visibility.Collapsed;
         CancelFolderScan();
         _shellPreview?.Dispose();
         _shellPreview = null;
