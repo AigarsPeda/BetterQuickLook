@@ -3,13 +3,14 @@ using System.Runtime.InteropServices;
 
 namespace BetterQuickLook;
 
-internal static class ShellImageHandlers
+internal static class ShellFileHandlers
 {
     internal sealed record Handler(string Name, string DisplayName, bool Recommended);
     private static readonly Dictionary<string, Task<IReadOnlyList<Handler>>> CachedLists = new(StringComparer.OrdinalIgnoreCase);
 
     internal static Task<IReadOnlyList<Handler>> ListAsync(string extension)
     {
+        if (string.IsNullOrEmpty(extension)) return Task.FromResult<IReadOnlyList<Handler>>([]);
         lock (CachedLists)
         {
             if (CachedLists.TryGetValue(extension, out var cached)) return cached;
@@ -55,9 +56,9 @@ internal static class ShellImageHandlers
          string.Equals(Path.GetFileName(handler.Name), Path.GetFileName(name), StringComparison.OrdinalIgnoreCase) &&
          string.Equals(handler.DisplayName, displayName, StringComparison.OrdinalIgnoreCase));
 
-    internal static void Open(string extension, string handlerName, string displayName, string imagePath)
+    internal static void Open(string extension, string handlerName, string displayName, string filePath)
     {
-        if (!File.Exists(imagePath)) throw new FileNotFoundException("Image was not found.", imagePath);
+        if (!File.Exists(filePath)) throw new FileNotFoundException("File was not found.", filePath);
         foreach (var handler in Enumerate(extension))
         {
             try
@@ -65,31 +66,31 @@ internal static class ShellImageHandlers
                 var name = ReadString(handler.GetName);
                 var label = ReadString(handler.GetUIName);
                 if (name is null || label is null || !Matches(new Handler(name, label, false), handlerName, displayName)) continue;
-                var data = CreateShellDataObject(imagePath);
+                var data = CreateShellDataObject(filePath);
                 try { Marshal.ThrowExceptionForHR(handler.Invoke(data)); }
                 finally { Marshal.Release(data); }
                 return;
             }
             finally { Marshal.ReleaseComObject(handler); }
         }
-        throw new FileNotFoundException("The selected program is no longer available for this image type.", handlerName);
+        throw new FileNotFoundException("The selected program is no longer available for this file type.", handlerName);
     }
 
-    private static IntPtr CreateShellDataObject(string imagePath)
+    private static IntPtr CreateShellDataObject(string filePath)
     {
-        IntPtr folder = IntPtr.Zero, image = IntPtr.Zero, data = IntPtr.Zero;
+        IntPtr folder = IntPtr.Zero, file = IntPtr.Zero, data = IntPtr.Zero;
         try
         {
-            Marshal.ThrowExceptionForHR(SHParseDisplayName(Path.GetDirectoryName(imagePath)!, IntPtr.Zero, out folder, 0, out _));
-            Marshal.ThrowExceptionForHR(SHParseDisplayName(imagePath, IntPtr.Zero, out image, 0, out _));
+            Marshal.ThrowExceptionForHR(SHParseDisplayName(Path.GetDirectoryName(filePath)!, IntPtr.Zero, out folder, 0, out _));
+            Marshal.ThrowExceptionForHR(SHParseDisplayName(filePath, IntPtr.Zero, out file, 0, out _));
             var iid = new Guid("0000010e-0000-0000-c000-000000000046");
-            Marshal.ThrowExceptionForHR(SHCreateDataObject(folder, 1, [ILFindLastID(image)], IntPtr.Zero, ref iid, out data));
+            Marshal.ThrowExceptionForHR(SHCreateDataObject(folder, 1, [ILFindLastID(file)], IntPtr.Zero, ref iid, out data));
             return data;
         }
         finally
         {
             if (folder != IntPtr.Zero) Marshal.FreeCoTaskMem(folder);
-            if (image != IntPtr.Zero) Marshal.FreeCoTaskMem(image);
+            if (file != IntPtr.Zero) Marshal.FreeCoTaskMem(file);
         }
     }
 

@@ -27,8 +27,8 @@ internal static class Program
             Run("Active Explorer tab selection", ActiveExplorerTab);
             Run("PNG and JPEG decode at preview size", Images);
             Run("Corrupt image rejection", CorruptImage);
-            Run("Image editor preference and launch arguments", ImageEditorChoice);
-            Run("Windows Open With image programs", ImagePrograms);
+            Run("Preferred apps by file type and launch arguments", PreferredApps);
+            Run("Windows Open With programs", FilePrograms);
             Run("Word text and empty document", Word);
             Run("Excel shared, inline, and numeric cells", Excel);
             Run("Missing and malformed document parts", InvalidDocuments);
@@ -101,56 +101,69 @@ internal static class Program
         ExpectFailure(() => PreviewWindow.DecodeImage(path), "corrupt image must fail cleanly");
     }
 
-    private static void ImageEditorChoice()
+    private static void PreferredApps()
     {
-        var settingsPath = Path.Combine(_folder, "editor preference", "settings.json");
-        var editor = Environment.ProcessPath!;
-        var image = Path.Combine(_folder, "image with spaces ä.png");
-        File.WriteAllBytes(image, [1, 2, 3]);
-        Check(ImageEditor.Load(settingsPath) is null, "no editor should be selected initially");
-        ImageEditor.Save(editor, settingsPath);
-        Check(ImageEditor.Load(settingsPath) == editor, "editor choice should persist");
-        File.WriteAllText(settingsPath, System.Text.Json.JsonSerializer.Serialize(new { ImageEditorPath = editor }));
-        Check(ImageEditor.LoadSelection(settingsPath)?.EditorPath == editor, "older editor settings should still load");
-        ImageEditor.SaveHandler("Example.ImageHandler", "Example editor", settingsPath);
-        var chosenHandler = ImageEditor.LoadSelection(settingsPath);
-        Check(chosenHandler?.HandlerName == "Example.ImageHandler" && chosenHandler.DisplayName == "Example editor" &&
-              chosenHandler.EditorPath is null, "registered program choice should persist without an executable path");
-        ImageEditor.Save(editor, settingsPath);
-        var start = ImageEditor.CreateStartInfo(editor, image);
-        Check(start.FileName == editor && start.ArgumentList.Count == 1 && start.ArgumentList[0] == image &&
-              start.UseShellExecute, "image path should be passed as one argument, including spaces and Unicode");
+        var settingsPath = Path.Combine(_folder, "preferred apps", "settings.json");
+        var program = Environment.ProcessPath!;
+        var file = Path.Combine(_folder, "file with spaces ä.png");
+        File.WriteAllBytes(file, [1, 2, 3]);
+        Check(FileOpener.LoadSelection(".png", settingsPath) is null, "no app should be chosen initially");
+        FileOpener.SaveExecutable(".PNG", program, settingsPath);
+        Check(FileOpener.LoadSelection(".jpg", settingsPath)?.ExecutablePath == program,
+            "one image choice should cover other image formats");
+        Check(FileOpener.LoadSelection(".json", settingsPath) is null, "image choice must not apply to JSON");
+        FileOpener.SaveHandler(".json", "Example.Code", "VS Code", settingsPath);
+        Check(FileOpener.LoadSelection(".jsonc", settingsPath)?.DisplayName == "VS Code",
+            "JSON and JSONC should share a preferred app");
+        FileOpener.SaveHandler(".docx", "Example.Word", "Word", settingsPath);
+        Check(FileOpener.LoadSelection(".doc", settingsPath)?.HandlerName == "Example.Word",
+            "Word document formats should share a preferred app");
+        FileOpener.SaveHandler(".xlsx", "Example.Excel", "Excel", settingsPath);
+        Check(FileOpener.LoadSelection(".xls", settingsPath)?.DisplayName == "Excel" &&
+              FileOpener.LoadSelection(".json", settingsPath)?.DisplayName == "VS Code",
+            "saving another file type must preserve earlier choices");
+        var start = FileOpener.CreateStartInfo(program, file);
+        Check(start.FileName == program && start.ArgumentList.Count == 1 && start.ArgumentList[0] == file &&
+              start.UseShellExecute, "file path should be passed as one argument, including spaces and Unicode");
+        File.WriteAllText(settingsPath, System.Text.Json.JsonSerializer.Serialize(new { ImageEditorPath = program }));
+        Check(FileOpener.LoadSelection(".png", settingsPath)?.ExecutablePath == program &&
+              FileOpener.LoadSelection(".json", settingsPath) is null, "older image settings should migrate only to images");
+        File.WriteAllText(settingsPath, System.Text.Json.JsonSerializer.Serialize(new { HandlerName = "Old.Paint", DisplayName = "Paint" }));
+        Check(FileOpener.LoadSelection(".jpg", settingsPath)?.HandlerName == "Old.Paint",
+            "older registered image choices should still load");
         File.WriteAllText(settingsPath, "{invalid");
-        Check(ImageEditor.Load(settingsPath) is null, "damaged settings should prompt for an editor again");
-        ExpectFailure(() => ImageEditor.Save(Path.Combine(_folder, "missing.exe"), settingsPath),
-            "missing editor should not be saved");
-        ExpectFailure(() => ImageEditor.CreateStartInfo(editor, Path.Combine(_folder, "missing.png")),
-            "missing image should not be launched");
+        Check(FileOpener.LoadSelection(".png", settingsPath) is null, "damaged settings should prompt for an app again");
+        ExpectFailure(() => FileOpener.SaveExecutable(".png", Path.Combine(_folder, "missing.exe"), settingsPath),
+            "missing program should not be saved");
+        ExpectFailure(() => FileOpener.CreateStartInfo(program, Path.Combine(_folder, "missing.png")),
+            "missing file should not be launched");
     }
 
-    private static void ImagePrograms()
+    private static void FilePrograms()
     {
-        foreach (var extension in new[] { ".png", ".jpg" })
+        foreach (var extension in new[] { ".png", ".jpg", ".json", ".docx" })
         {
-            var loading = ShellImageHandlers.ListAsync(extension);
-            Check(ReferenceEquals(loading, ShellImageHandlers.ListAsync(extension)), "program lists should be reused per image type");
+            var loading = ShellFileHandlers.ListAsync(extension);
+            Check(ReferenceEquals(loading, ShellFileHandlers.ListAsync(extension)), "program lists should be reused per file type");
             var handlers = loading.GetAwaiter().GetResult();
-            Check(handlers.Count > 0, $"Windows should list programs for {extension}");
+            if (extension is ".png" or ".jpg") Check(handlers.Count > 0, $"Windows should list programs for {extension}");
             Check(handlers.All(handler => !string.IsNullOrWhiteSpace(handler.Name) &&
                                           !string.IsNullOrWhiteSpace(handler.DisplayName)),
                 "Open With programs should have identifiers and display names");
             Check(handlers.Select(handler => handler.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() == handlers.Count,
                 "Open With menu should not repeat a program");
         }
-        Check(ShellImageHandlers.Matches(new ShellImageHandlers.Handler(@"C:\Apps\Paint_2\mspaint.exe", "Paint", true),
+        Check(ShellFileHandlers.ListAsync("").GetAwaiter().GetResult().Count == 0,
+            "files without extensions should still allow a browsed program");
+        Check(ShellFileHandlers.Matches(new ShellFileHandlers.Handler(@"C:\Apps\Paint_2\mspaint.exe", "Paint", true),
                 @"C:\Apps\Paint_1\mspaint.exe", "Paint"), "updated packaged apps should keep the saved choice");
-        Check(!ShellImageHandlers.Matches(new ShellImageHandlers.Handler(@"C:\Apps\Other\mspaint.exe", "Other", true),
+        Check(!ShellFileHandlers.Matches(new ShellFileHandlers.Handler(@"C:\Apps\Other\mspaint.exe", "Other", true),
                 @"C:\Apps\Paint\mspaint.exe", "Paint"), "a different program must not inherit the saved choice");
     }
 
     private static void OpenWithSmoke()
     {
-        var paint = ShellImageHandlers.List(".png").First(handler =>
+        var paint = ShellFileHandlers.List(".png").First(handler =>
             handler.Name.Contains("mspaint.exe", StringComparison.OrdinalIgnoreCase));
         var image = Path.Combine(_folder, "open-with-smoke.png");
         using (var bitmap = new Bitmap(16, 16)) bitmap.Save(image, ImageFormat.Png);
@@ -158,7 +171,7 @@ internal static class Program
         Check(existing.Count == 0, "close Paint before running the optional launch smoke test");
         try
         {
-            ShellImageHandlers.Open(".png", paint.Name, paint.DisplayName, image);
+            ShellFileHandlers.Open(".png", paint.Name, paint.DisplayName, image);
             Thread.Sleep(1500);
         }
         finally
@@ -291,26 +304,39 @@ internal static class Program
     {
         var path = Path.Combine(_folder, "visible.png");
         using (var image = new Bitmap(20, 20)) image.Save(path, ImageFormat.Png);
+        var settingsPath = Path.Combine(_folder, "window-apps", "settings.json");
+        FileOpener.SaveHandler(".png", "Example.Image", "BetterScreenShot", settingsPath);
+        FileOpener.SaveHandler(".json", "Example.Code", "VS Code", settingsPath);
+        FileOpener.SaveHandler(".docx", "Example.Word", "Word", settingsPath);
         var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         app.Resources.MergedDictionaries.Add(new ResourceDictionary
         {
             Source = new Uri("/BetterQuickLook;component/ScrollBarTheme.xaml", UriKind.Relative)
         });
-        var preview = new PreviewWindow();
+        var preview = new PreviewWindow(settingsPath);
         var other = new Window { Width = 100, Height = 100, ShowInTaskbar = false };
         try
         {
             preview.ShowFile(path);
             Check(preview.IsVisible, "preview should open");
-            Check(preview.CanEditImage, "image preview should show editor controls");
-            preview.ChangeProgramButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
-            for (var attempt = 0; attempt < 10 && preview.EditorMenu?.Items.Count <= 2; attempt++)
+            Check(preview.CanOpenFile && preview.PreferredAppLabel == "Preferred app: BetterScreenShot",
+                "image preview should show its preferred app in the corner");
+            var imageChoice = FileOpener.LoadSelection(".png", settingsPath);
+            var imageChooser = imageChoice is null ? preview.OpenButton : preview.ChangeProgramButton;
+            imageChooser.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            for (var attempt = 0; attempt < 10 && preview.ProgramMenu?.Items.Count <= 2; attempt++)
                 PumpDispatcher(TimeSpan.FromMilliseconds(100));
-            var editorMenu = preview.EditorMenu;
-            Check(editorMenu?.IsOpen == true && editorMenu.Items.OfType<MenuItem>()
-                .Any(item => Equals(item.Header, ShellImageHandlers.ListAsync(".png").GetAwaiter().GetResult()[0].DisplayName)),
+            var programMenu = preview.ProgramMenu;
+            Check(programMenu?.IsOpen == true && programMenu.Items.OfType<MenuItem>()
+                .Any(item => Equals(item.Header, ShellFileHandlers.ListAsync(".png").GetAwaiter().GetResult()[0].DisplayName)),
                 "Change program should show Windows Open With choices");
-            editorMenu!.IsOpen = false;
+            programMenu!.IsOpen = false;
+            preview.Width = 420;
+            PumpDispatcher(TimeSpan.FromMilliseconds(100));
+            var change = preview.ChangeProgramButton;
+            var rightEdge = change.TransformToAncestor(preview).TransformBounds(new System.Windows.Rect(change.RenderSize)).Right;
+            Check(rightEdge <= preview.ActualWidth, "preferred app controls should fit in a narrow preview window");
+            preview.Width = 900;
             Check(preview.Topmost, "preview should appear above other windows");
             other.Show();
             other.Activate();
@@ -328,7 +354,7 @@ internal static class Program
             preview.Hide();
             preview.ShowFile(folder.FullName);
             PumpDispatcher(TimeSpan.FromMilliseconds(150));
-            Check(!preview.CanEditImage, "folder preview should not show editor controls");
+            Check(!preview.CanOpenFile, "folder preview should not show file program controls");
             Check(ContainsText(preview, "LOCATION") && ContainsText(preview, folder.FullName),
                 "folder preview should show a labeled location");
             Check(ContainsText(preview, "SIZE") && ContainsText(preview, "CONTENTS"),
@@ -337,7 +363,21 @@ internal static class Program
             File.WriteAllText(json, "{\"items\":[" + string.Join(',', Enumerable.Range(0, 300).Select(i => $"{{\"number\":{i}}}")) + "]}");
             preview.Hide();
             preview.ShowFile(json);
-            Check(!preview.CanEditImage, "JSON preview should not show editor controls");
+            Check(preview.CanOpenFile && preview.PreferredAppLabel == "Preferred app: VS Code",
+                "JSON preview should show its preferred app in the corner");
+            var jsonChoice = FileOpener.LoadSelection(".json", settingsPath);
+            Check(preview.PreferredAppLabel == (jsonChoice is null ? "Preferred app: none" : $"Preferred app: {jsonChoice.DisplayName}"),
+                "JSON corner label should match the chosen app");
+            var jsonChooser = jsonChoice is null ? preview.OpenButton : preview.ChangeProgramButton;
+            jsonChooser.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            for (var attempt = 0; attempt < 10 && preview.ProgramMenu?.Items.Count <= 2; attempt++)
+                PumpDispatcher(TimeSpan.FromMilliseconds(100));
+            var jsonHandlers = ShellFileHandlers.ListAsync(".json").GetAwaiter().GetResult();
+            Check(preview.ProgramMenu?.IsOpen == true &&
+                  (jsonHandlers.Count == 0 || preview.ProgramMenu.Items.OfType<MenuItem>()
+                      .Any(item => Equals(item.Header, jsonHandlers[0].DisplayName))),
+                "JSON menu should show available programs");
+            preview.ProgramMenu!.IsOpen = false;
             for (var attempt = 0; attempt < 10 && !ContainsText(preview, json); attempt++)
                 PumpDispatcher(TimeSpan.FromMilliseconds(100));
             Check(ContainsText(preview, json), "JSON files should open the JSON preview view");
@@ -349,6 +389,20 @@ internal static class Program
             var thumb = FindVisual<Border>(track!.Thumb, border => border.Background is SolidColorBrush);
             Check(thumb?.Background is SolidColorBrush brush && brush.Color == System.Windows.Media.Color.FromRgb(98, 113, 133),
                 "JSON preview scrollbar thumb should use the dark theme color");
+            var docx = Path.Combine(_folder, "window.docx");
+            CreateZip(docx, ("word/document.xml",
+                "<w:document xmlns:w='http://schemas.openxmlformats.org/wordprocessingml/2006/main'><w:body/></w:document>"));
+            preview.Hide();
+            preview.ShowFile(docx);
+            Check(preview.CanOpenFile && preview.PreferredAppLabel == "Preferred app: Word",
+                "Word preview should offer a separately chosen program");
+            var unknown = Path.Combine(_folder, "window.unknown");
+            File.WriteAllText(unknown, "sample");
+            preview.Hide();
+            preview.ShowFile(unknown);
+            Check(preview.CanOpenFile && preview.PreferredAppLabel == "Preferred app: none" &&
+                  Equals(preview.OpenButton.Content, "Choose app"),
+                "unconfigured file types should offer a program choice");
         }
         finally
         {
