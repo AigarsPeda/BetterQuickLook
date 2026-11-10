@@ -1,0 +1,126 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="BetterQuickLook" Manufacturer="A. Peda" Version="$(var.AppVersion)" Scope="perUser"
+           UpgradeCode="D370586A-F127-438D-BBD5-8F16CE73667C">
+    <!-- Rebuilding a test package at the same version should replace the previous build. -->
+    <MajorUpgrade AllowSameVersionUpgrades="yes" DowngradeErrorMessage="A newer version of BetterQuickLook is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <Property Id="DefaultUIFont" Value="SetupFont" />
+    <Property Id="ErrorDialog" Value="SetupError" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="LocalPrograms" Name="Programs">
+        <Directory Id="InstallFolder" Name="BetterQuickLook">
+          <Component Id="Application" Guid="B3B26866-FEC8-4D19-AAB4-EFF147A3882F">
+            <File Id="ApplicationExe" Source="$(var.AppExe)" />
+            <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="BetterQuickLook"
+                      Target="[#ApplicationExe]" WorkingDirectory="InstallFolder" />
+            <RegistryValue Root="HKCU" Key="Software\BetterQuickLook\Installer" Name="Installed"
+                           Type="integer" Value="1" KeyPath="yes" />
+            <RemoveFolder Id="RemoveInstallFolder" On="uninstall" />
+            <RemoveFolder Id="RemoveEmptyProgramsFolder" Directory="LocalPrograms" On="uninstall" />
+          </Component>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+    <Feature Id="ApplicationFeature" Title="BetterQuickLook">
+      <ComponentRef Id="Application" />
+    </Feature>
+
+    <UI>
+      <TextStyle Id="SetupFont" FaceName="Segoe UI" Size="9" />
+      <TextStyle Id="SetupHeading" FaceName="Segoe UI" Size="14" Bold="yes" />
+      <Dialog Id="Welcome" Width="320" Height="132" Title="BetterQuickLook Setup" NoMinimize="yes">
+        <Control Id="Heading" Type="Text" X="16" Y="14" Width="288" Height="20" Text="{\SetupHeading}Install BetterQuickLook" />
+        <Control Id="Description" Type="Text" X="16" Y="44" Width="288" Height="42"
+                 Text="Setup installs BetterQuickLook for your Windows account and adds it to the Start menu. If BetterQuickLook is running, exit it from the notification area before continuing." />
+        <Control Id="Install" Type="PushButton" X="188" Y="104" Width="56" Height="17" Text="Install" Default="yes">
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="248" Y="104" Width="56" Height="17" Text="Cancel" Cancel="yes">
+          <Publish Event="EndDialog" Value="Exit" />
+        </Control>
+      </Dialog>
+      <Dialog Id="Progress" Width="320" Height="104" Title="BetterQuickLook Setup" NoMinimize="yes" Modeless="yes">
+        <Control Id="Heading" Type="Text" X="16" Y="14" Width="288" Height="20"
+                 Text="{\SetupHeading}Working on BetterQuickLook" TabSkip="no" />
+        <Control Id="Description" Type="Text" X="16" Y="44" Width="288" Height="14" Text="Please wait while Windows finishes setup." />
+        <Control Id="ProgressBar" Type="ProgressBar" X="16" Y="69" Width="288" Height="12" Text="Setup progress">
+          <Subscribe Event="SetProgress" Attribute="Progress" />
+        </Control>
+      </Dialog>
+      <Dialog Id="Finished" Width="320" Height="110" Title="BetterQuickLook Setup" NoMinimize="yes">
+        <Control Id="Heading" Type="Text" X="16" Y="14" Width="288" Height="20" Text="{\SetupHeading}Setup complete" />
+        <Control Id="Close" Type="PushButton" X="248" Y="82" Width="56" Height="17" Text="Close" Default="yes" Cancel="yes">
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
+      </Dialog>
+      <Dialog Id="Failed" Width="320" Height="110" Title="BetterQuickLook Setup" NoMinimize="yes">
+        <Control Id="Heading" Type="Text" X="16" Y="14" Width="288" Height="20" Text="{\SetupHeading}Setup could not finish" />
+        <Control Id="Description" Type="Text" X="16" Y="44" Width="288" Height="28"
+                 Text="Exit any running copy of BetterQuickLook from the notification area before trying again." />
+        <Control Id="Close" Type="PushButton" X="248" Y="82" Width="56" Height="17" Text="Close" Default="yes" Cancel="yes">
+          <Publish Event="EndDialog" Value="Exit" />
+        </Control>
+      </Dialog>
+      <Dialog Id="Cancelled" Width="320" Height="110" Title="BetterQuickLook Setup" NoMinimize="yes">
+        <Control Id="Heading" Type="Text" X="16" Y="14" Width="288" Height="20" Text="{\SetupHeading}Setup cancelled" />
+        <Control Id="Close" Type="PushButton" X="248" Y="82" Width="56" Height="17" Text="Close" Default="yes" Cancel="yes">
+          <Publish Event="EndDialog" Value="Exit" />
+        </Control>
+      </Dialog>
+      <Dialog Id="FilesInUse" Width="320" Height="160" Title="BetterQuickLook Setup" KeepModeless="yes">
+        <Control Id="Description" Type="Text" X="16" Y="14" Width="288" Height="30"
+                 Text="Close these apps before continuing. To close BetterQuickLook, use Exit in the notification area." />
+        <Control Id="Apps" Type="ListBox" X="16" Y="48" Width="288" Height="64" Property="FileInUseProcess" />
+        <Control Id="Retry" Type="PushButton" X="128" Y="132" Width="56" Height="17" Text="Retry" Default="yes">
+          <Publish Event="EndDialog" Value="Retry" />
+        </Control>
+        <Control Id="Ignore" Type="PushButton" X="188" Y="132" Width="56" Height="17" Text="Ignore">
+          <Publish Event="EndDialog" Value="Ignore" />
+        </Control>
+        <Control Id="Close" Type="PushButton" X="248" Y="132" Width="56" Height="17" Text="Cancel" Cancel="yes">
+          <Publish Event="EndDialog" Value="Exit" />
+        </Control>
+      </Dialog>
+      <!-- Windows Installer selects and positions the buttons for each error. -->
+      <Dialog Id="SetupError" Width="320" Height="110" Title="BetterQuickLook Setup" ErrorDialog="yes">
+        <Control Id="ErrorText" Type="Text" X="16" Y="14" Width="288" Height="60" TabSkip="no" NoPrefix="yes" Text="Setup error" />
+        <Control Id="A" Type="PushButton" X="132" Y="82" Width="56" Height="17" Text="Abort" TabSkip="yes">
+          <Publish Event="EndDialog" Value="ErrorAbort" />
+        </Control>
+        <Control Id="C" Type="PushButton" X="132" Y="82" Width="56" Height="17" Text="Cancel" TabSkip="yes">
+          <Publish Event="EndDialog" Value="ErrorCancel" />
+        </Control>
+        <Control Id="I" Type="PushButton" X="132" Y="82" Width="56" Height="17" Text="Ignore" TabSkip="yes">
+          <Publish Event="EndDialog" Value="ErrorIgnore" />
+        </Control>
+        <Control Id="N" Type="PushButton" X="132" Y="82" Width="56" Height="17" Text="No" TabSkip="yes">
+          <Publish Event="EndDialog" Value="ErrorNo" />
+        </Control>
+        <Control Id="O" Type="PushButton" X="132" Y="82" Width="56" Height="17" Text="OK" TabSkip="yes">
+          <Publish Event="EndDialog" Value="ErrorOk" />
+        </Control>
+        <Control Id="R" Type="PushButton" X="132" Y="82" Width="56" Height="17" Text="Retry" TabSkip="yes">
+          <Publish Event="EndDialog" Value="ErrorRetry" />
+        </Control>
+        <Control Id="Y" Type="PushButton" X="132" Y="82" Width="56" Height="17" Text="Yes" TabSkip="yes">
+          <Publish Event="EndDialog" Value="ErrorYes" />
+        </Control>
+      </Dialog>
+    </UI>
+    <InstallUISequence>
+      <Show Dialog="Welcome" Before="Progress" Condition="NOT Installed" />
+      <Show Dialog="Progress" Before="ExecuteAction" />
+      <Show Dialog="Finished" OnExit="success" />
+      <Show Dialog="Cancelled" OnExit="cancel" />
+      <Show Dialog="Failed" OnExit="error" />
+    </InstallUISequence>
+    <AdminUISequence>
+      <Show Dialog="Finished" OnExit="success" />
+      <Show Dialog="Cancelled" OnExit="cancel" />
+      <Show Dialog="Failed" OnExit="error" />
+    </AdminUISequence>
+  </Package>
+</Wix>

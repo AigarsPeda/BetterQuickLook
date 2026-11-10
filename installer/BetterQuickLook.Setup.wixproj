@@ -1,0 +1,7 @@
+<Project Sdk="WixToolset.Sdk/4.0.3">
+  <PropertyGroup>
+    <InstallerPlatform>x86</InstallerPlatform>
+    <OutputName>BetterQuickLook-Setup</OutputName>
+    <DefineConstants>AppVersion=$(AppVersion);AppExe=$(MSBuildProjectDirectory)\obj\payload\BetterQuickLook.exe</DefineConstants>
+  </PropertyGroup>
+</Project>
