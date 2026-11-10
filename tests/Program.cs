@@ -209,9 +209,16 @@ internal static partial class Program
             shortcut.Execute(null, preview);
             preview.UpdateLayout();
             Check(!shortcut.CanExecute(null, preview), "another launch should be blocked while Paint opens");
+            Check(FindVisual<TextBlock>(preview.OpenButton, text => text.IsVisible && text.Text == "Opening…") is not null &&
+                  FindVisual<TextBlock>(preview.OpenButton, text => text.IsVisible && text.Text == label) is null,
+                "the Open button should show opening feedback while Paint launches");
             Check(preview.OpenButtonLabel == label && buttons.Select(FooterAppearance).SequenceEqual(before),
-                "launching must preserve the buttons' labels, positions, sizes, and colors");
+                "opening feedback must preserve the app label, button positions, sizes, and colors");
             WaitForPickerState(() => !preview.IsVisible && PaintIsRunning());
+            preview.ShowFile(image);
+            preview.UpdateLayout();
+            Check(FindVisual<TextBlock>(preview.OpenButton, text => text.IsVisible && text.Text == label) is not null,
+                "reopening the preview should restore the app label");
         }
         finally { ClosePaint(); }
 

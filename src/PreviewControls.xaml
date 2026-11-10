@@ -15,34 +15,48 @@
         <Setter Property="StrokeThickness" Value="1.5" />
     </Style>
 
+    <Style x:Key="PreviewFooterFocus" TargetType="Control">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Control">
+                    <Border BorderBrush="#F0F0F6" BorderThickness="2" CornerRadius="9" Margin="-2" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="PreviewFooterButton" TargetType="Button">
-        <Setter Property="Background" Value="{StaticResource PreviewActionFill}" />
-        <Setter Property="Foreground" Value="White" />
-        <Setter Property="BorderBrush" Value="{StaticResource PreviewControlBorder}" />
-        <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="Height" Value="30" />
+        <Setter Property="Background" Value="#252833" />
+        <Setter Property="Foreground" Value="#F0F0F6" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource PreviewFooterFocus}" />
+        <Setter Property="Height" Value="34" />
+        <Setter Property="FontSize" Value="13" />
         <Setter Property="Padding" Value="12,0" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="ButtonChrome" Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
-                            Padding="{TemplateBinding Padding}" CornerRadius="2">
+                            Padding="{TemplateBinding Padding}" CornerRadius="9">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
                                           RecognizesAccessKey="True" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="ButtonChrome" Property="BorderBrush" Value="{StaticResource PreviewControlFocus}" />
+                            <Setter TargetName="ButtonChrome" Property="Opacity" Value="0.9" />
                         </Trigger>
-                        <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="ButtonChrome" Property="BorderBrush" Value="{StaticResource PreviewControlFocus}" />
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="ButtonChrome" Property="Opacity" Value="0.8" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <Style x:Key="PreviewPrimaryButton" TargetType="Button" BasedOn="{StaticResource PreviewFooterButton}">
+        <Setter Property="Background" Value="#B9B5FF" />
+        <Setter Property="Foreground" Value="#222345" />
     </Style>
 
     <Style x:Key="ProgramPickerItem" TargetType="MenuItem">

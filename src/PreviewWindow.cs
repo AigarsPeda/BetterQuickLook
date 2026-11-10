@@ -28,6 +28,7 @@ internal sealed class PreviewWindow : Window
     private readonly TextBlock _details;
     private readonly Grid _body;
     private readonly TextBlock _openLabel;
+    private readonly TextBlock _openingLabel;
     private readonly WpfButton _openButton;
     private readonly WpfButton _changeProgramButton;
     private readonly string? _settingsPath;
@@ -106,8 +107,15 @@ internal sealed class PreviewWindow : Window
         };
         footer.Children.Add(hint);
         _openLabel = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis };
-        _openButton = MakeFooterButton();
-        _openButton.Content = _openLabel;
+        _openingLabel = new TextBlock { Text = "Opening…", HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+            Visibility = Visibility.Hidden };
+        // Hidden labels still reserve their space, so the footer stays put during a launch.
+        var openContent = new Grid();
+        openContent.Children.Add(_openLabel);
+        openContent.Children.Add(_openingLabel);
+        _openButton = MakeFooterButton("PreviewPrimaryButton");
+        _openButton.Content = openContent;
+        System.Windows.Automation.AutomationProperties.SetLiveSetting(_openButton, System.Windows.Automation.AutomationLiveSetting.Polite);
         _openButton.MaxWidth = 250;
         _openButton.Click += (_, _) => OpenCurrentFile();
         Grid.SetColumn(_openButton, 1);
@@ -154,7 +162,7 @@ internal sealed class PreviewWindow : Window
         _launchRequest++;
         _openButton.Visibility = Visibility.Collapsed;
         _changeProgramButton.Visibility = Visibility.Collapsed;
-        _isLaunchingProgram = false;
+        SetProgramLaunching(false);
 
         var info = new FileInfo(path);
         _title.Text = info.Name;
@@ -218,9 +226,9 @@ internal sealed class PreviewWindow : Window
         ShowMessage(path);
     }
 
-    private WpfButton MakeFooterButton() => new()
+    private WpfButton MakeFooterButton(string style = "PreviewFooterButton") => new()
     {
-        Style = (Style)FindResource("PreviewFooterButton"),
+        Style = (Style)FindResource(style),
         Visibility = Visibility.Collapsed
     };
 
@@ -390,15 +398,15 @@ internal sealed class PreviewWindow : Window
     {
         if (_isLaunchingProgram || _currentFilePath is not { } filePath) return;
         var request = ++_launchRequest;
-        _isLaunchingProgram = true;
+        SetProgramLaunching(true);
         Task launch = selection.HandlerName is { } handlerName
             ? ShellFileHandlers.OpenAsync(Path.GetExtension(filePath), handlerName, selection.DisplayName, filePath)
             : Task.Run(() => Process.Start(FileOpener.CreateStartInfo(selection.ExecutablePath!, filePath)));
         _ = launch.ContinueWith(task => Dispatcher.BeginInvoke(new Action(() =>
         {
             var error = task.Exception?.GetBaseException();
-            if (request != _launchRequest || _currentFilePath != filePath) return;
-            _isLaunchingProgram = false;
+            if (request != _launchRequest || _currentFilePath != filePath || !IsVisible) return;
+            SetProgramLaunching(false);
             if (error is null) { Hide(); return; }
             RefreshPreferredApp();
             if (error is FileNotFoundException && selection.HandlerName is not null)
@@ -406,6 +414,20 @@ internal sealed class PreviewWindow : Window
             else
                 System.Windows.MessageBox.Show(this, error.Message, "Could not open file");
         })));
+    }
+
+    private void SetProgramLaunching(bool launching)
+    {
+        _isLaunchingProgram = launching;
+        _openLabel.Visibility = launching ? Visibility.Hidden : Visibility.Visible;
+        _openingLabel.Visibility = launching ? Visibility.Visible : Visibility.Hidden;
+        System.Windows.Automation.AutomationProperties.SetItemStatus(_openButton, launching ? "Opening" : "");
+        if (launching)
+        {
+            var peer = System.Windows.Automation.Peers.UIElementAutomationPeer.FromElement(_openButton) ??
+                       System.Windows.Automation.Peers.UIElementAutomationPeer.CreatePeerForElement(_openButton);
+            peer?.RaiseAutomationEvent(System.Windows.Automation.Peers.AutomationEvents.LiveRegionChanged);
+        }
     }
 
     private void ShowJson(string path)
@@ -660,7 +682,7 @@ internal sealed class PreviewWindow : Window
         _currentFilePath = null;
         _openButton.Visibility = Visibility.Collapsed;
         _changeProgramButton.Visibility = Visibility.Collapsed;
-        _isLaunchingProgram = false;
+        SetProgramLaunching(false);
         CancelFolderScan();
         _shellPreview?.Dispose();
         _shellPreview = null;
