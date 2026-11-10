@@ -35,7 +35,7 @@ public partial class App : System.Windows.Application
             "Select one file on the Desktop or in File Explorer and press Space. Press Space or Escape to close the preview.",
             "BetterQuickLook");
 
-        _hook = new KeyboardHook(() => _preview?.IsVisible == true && !_preview.IsChoosingProgram && !_preview.IsProgramButtonFocused,
+        _hook = new KeyboardHook(() => _preview?.IsVisible == true && !_preview.IsChoosingEditor && !_preview.IsEditorButtonFocused,
             () => Dispatcher.BeginInvoke(TogglePreview));
     }
 
@@ -45,6 +45,7 @@ public partial class App : System.Windows.Application
         if (_preview?.IsVisible == true)
         {
             _preview.Hide();
+            
             return;
         }
 

@@ -6,9 +6,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
-using WpfImage = System.Windows.Controls.Image;
-using System.Windows.Controls.Primitives;
-using WpfScrollBar = System.Windows.Controls.Primitives.ScrollBar;
 using System.Windows.Threading;
 using BetterQuickLook;
 
@@ -28,8 +25,7 @@ internal static class Program
             Run("Active Explorer tab selection", ActiveExplorerTab);
             Run("PNG and JPEG decode at preview size", Images);
             Run("Corrupt image rejection", CorruptImage);
-            Run("Preferred apps by file type and launch arguments", PreferredApps);
-            Run("Windows Open With programs", FilePrograms);
+            Run("Image editor preference and launch arguments", ImageEditorChoice);
             Run("Word text and empty document", Word);
             Run("Excel shared, inline, and numeric cells", Excel);
             Run("Missing and malformed document parts", InvalidDocuments);
@@ -39,8 +35,6 @@ internal static class Program
             {
                 Run("Desktop Shell selection", DesktopShell);
                 Run("Preview remains visible after focus changes", WindowLifecycle);
-                if (Environment.GetCommandLineArgs().Contains("--open-with-smoke"))
-                    Run("Open With launches Paint", OpenWithSmoke);
             }
             Console.WriteLine($"{_passed} tests passed.");
             return 0;
@@ -102,98 +96,24 @@ internal static class Program
         ExpectFailure(() => PreviewWindow.DecodeImage(path), "corrupt image must fail cleanly");
     }
 
-    private static void PreferredApps()
+    private static void ImageEditorChoice()
     {
-        var settingsPath = Path.Combine(_folder, "preferred apps", "settings.json");
-        var program = Environment.ProcessPath!;
-        var file = Path.Combine(_folder, "file with spaces ä.png");
-        File.WriteAllBytes(file, [1, 2, 3]);
-        Check(FileOpener.LoadSelection(".png", settingsPath) is null, "no app should be chosen initially");
-        FileOpener.SaveExecutable(".PNG", program, settingsPath);
-        Check(FileOpener.LoadSelection(".jpg", settingsPath)?.ExecutablePath == program,
-            "one image choice should cover other image formats");
-        Check(FileOpener.LoadSelection(".json", settingsPath) is null, "image choice must not apply to JSON");
-        FileOpener.SaveHandler(".json", "Example.Code", "VS Code", settingsPath);
-        Check(FileOpener.LoadSelection(".jsonc", settingsPath)?.DisplayName == "VS Code",
-            "JSON and JSONC should share a preferred app");
-        FileOpener.SaveHandler(".docx", "Example.Word", "Word", settingsPath);
-        Check(FileOpener.LoadSelection(".doc", settingsPath)?.HandlerName == "Example.Word",
-            "Word document formats should share a preferred app");
-        FileOpener.SaveHandler(".xlsx", "Example.Excel", "Excel", settingsPath);
-        Check(FileOpener.LoadSelection(".xls", settingsPath)?.DisplayName == "Excel" &&
-              FileOpener.LoadSelection(".json", settingsPath)?.DisplayName == "VS Code",
-            "saving another file type must preserve earlier choices");
-        var start = FileOpener.CreateStartInfo(program, file);
-        Check(start.FileName == program && start.ArgumentList.Count == 1 && start.ArgumentList[0] == file &&
-              start.UseShellExecute, "file path should be passed as one argument, including spaces and Unicode");
-        File.WriteAllText(settingsPath, System.Text.Json.JsonSerializer.Serialize(new { ImageEditorPath = program }));
-        Check(FileOpener.LoadSelection(".png", settingsPath)?.ExecutablePath == program &&
-              FileOpener.LoadSelection(".json", settingsPath) is null, "older image settings should migrate only to images");
-        File.WriteAllText(settingsPath, System.Text.Json.JsonSerializer.Serialize(new { HandlerName = "Old.Paint", DisplayName = "Paint" }));
-        Check(FileOpener.LoadSelection(".jpg", settingsPath)?.HandlerName == "Old.Paint",
-            "older registered image choices should still load");
+        var settingsPath = Path.Combine(_folder, "editor preference", "settings.json");
+        var editor = Environment.ProcessPath!;
+        var image = Path.Combine(_folder, "image with spaces ä.png");
+        File.WriteAllBytes(image, [1, 2, 3]);
+        Check(ImageEditor.Load(settingsPath) is null, "no editor should be selected initially");
+        ImageEditor.Save(editor, settingsPath);
+        Check(ImageEditor.Load(settingsPath) == editor, "editor choice should persist");
+        var start = ImageEditor.CreateStartInfo(editor, image);
+        Check(start.FileName == editor && start.ArgumentList.Count == 1 && start.ArgumentList[0] == image &&
+              start.UseShellExecute, "image path should be passed as one argument, including spaces and Unicode");
         File.WriteAllText(settingsPath, "{invalid");
-        Check(FileOpener.LoadSelection(".png", settingsPath) is null, "damaged settings should prompt for an app again");
-        ExpectFailure(() => FileOpener.SaveExecutable(".png", Path.Combine(_folder, "missing.exe"), settingsPath),
-            "missing program should not be saved");
-        ExpectFailure(() => FileOpener.CreateStartInfo(program, Path.Combine(_folder, "missing.png")),
-            "missing file should not be launched");
-    }
-
-    private static void FilePrograms()
-    {
-        foreach (var extension in new[] { ".png", ".jpg", ".json", ".docx" })
-        {
-            var loading = ShellFileHandlers.ListAsync(extension);
-            Check(ReferenceEquals(loading, ShellFileHandlers.ListAsync(extension)), "program lists should be reused per file type");
-            var handlers = loading.GetAwaiter().GetResult();
-            if (extension is ".png" or ".jpg") Check(handlers.Count > 0, $"Windows should list programs for {extension}");
-            Check(handlers.All(handler => !string.IsNullOrWhiteSpace(handler.Name) &&
-                                          !string.IsNullOrWhiteSpace(handler.DisplayName)),
-                "Open With programs should have identifiers and display names");
-            Check(handlers.Select(handler => handler.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() == handlers.Count,
-                "Open With menu should not repeat a program");
-            if (extension == ".png")
-            {
-                Check(handlers.Any(handler => handler.Icon is not null), "available image programs should include their icons");
-                var screenshot = handlers.FirstOrDefault(handler => handler.DisplayName == "BetterScreenShot");
-                if (screenshot is not null)
-                    Check(screenshot.Icon is not null, "BetterScreenShot should display its own program icon");
-            }
-        }
-        var screenshotIcon = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
-            "BetterScreenShot", "assets", "BetterScreenShot.ico");
-        if (File.Exists(screenshotIcon))
-            Check(ProgramIcons.Extract(screenshotIcon) is not null, "BetterScreenShot's icon asset should be readable");
-        Check(ShellFileHandlers.ListAsync("").GetAwaiter().GetResult().Count == 0,
-            "files without extensions should still allow a browsed program");
-        Check(ShellFileHandlers.Matches(new ShellFileHandlers.Handler(@"C:\Apps\Paint_2\mspaint.exe", "Paint", true),
-                @"C:\Apps\Paint_1\mspaint.exe", "Paint"), "updated packaged apps should keep the saved choice");
-        Check(!ShellFileHandlers.Matches(new ShellFileHandlers.Handler(@"C:\Apps\Other\mspaint.exe", "Other", true),
-                @"C:\Apps\Paint\mspaint.exe", "Paint"), "a different program must not inherit the saved choice");
-    }
-
-    private static void OpenWithSmoke()
-    {
-        var paint = ShellFileHandlers.List(".png").First(handler =>
-            handler.Name.Contains("mspaint.exe", StringComparison.OrdinalIgnoreCase));
-        var image = Path.Combine(_folder, "open-with-smoke.png");
-        using (var bitmap = new Bitmap(16, 16)) bitmap.Save(image, ImageFormat.Png);
-        var existing = System.Diagnostics.Process.GetProcessesByName("mspaint").Select(process => process.Id).ToHashSet();
-        Check(existing.Count == 0, "close Paint before running the optional launch smoke test");
-        try
-        {
-            var timer = System.Diagnostics.Stopwatch.StartNew();
-            var launch = ShellFileHandlers.OpenAsync(".png", paint.Name, paint.DisplayName, image);
-            Check(timer.Elapsed < TimeSpan.FromSeconds(2), "opening a program should not block the preview window");
-            launch.GetAwaiter().GetResult();
-            Thread.Sleep(1500);
-        }
-        finally
-        {
-            foreach (var process in System.Diagnostics.Process.GetProcessesByName("mspaint"))
-                if (!existing.Contains(process.Id)) process.Kill();
-        }
+        Check(ImageEditor.Load(settingsPath) is null, "damaged settings should prompt for an editor again");
+        ExpectFailure(() => ImageEditor.Save(Path.Combine(_folder, "missing.exe"), settingsPath),
+            "missing editor should not be saved");
+        ExpectFailure(() => ImageEditor.CreateStartInfo(editor, Path.Combine(_folder, "missing.png")),
+            "missing image should not be launched");
     }
 
     private static void Word()
@@ -319,52 +239,14 @@ internal static class Program
     {
         var path = Path.Combine(_folder, "visible.png");
         using (var image = new Bitmap(20, 20)) image.Save(path, ImageFormat.Png);
-        var settingsPath = Path.Combine(_folder, "window-apps", "settings.json");
-        var screenshotHandler = ShellFileHandlers.ListAsync(".png").GetAwaiter().GetResult()
-            .FirstOrDefault(handler => handler.DisplayName == "BetterScreenShot");
-        FileOpener.SaveHandler(".png", screenshotHandler?.Name ?? "Example.Image", "BetterScreenShot", settingsPath);
-        FileOpener.SaveHandler(".json", "Example.Code", "VS Code", settingsPath);
-        FileOpener.SaveHandler(".docx", "Example.Word", "Word", settingsPath);
         var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        app.Resources.MergedDictionaries.Add(new ResourceDictionary
-        {
-            Source = new Uri("/BetterQuickLook;component/ScrollBarTheme.xaml", UriKind.Relative)
-        });
-        var preview = new PreviewWindow(settingsPath);
+        var preview = new PreviewWindow();
         var other = new Window { Width = 100, Height = 100, ShowInTaskbar = false };
         try
         {
             preview.ShowFile(path);
             Check(preview.IsVisible, "preview should open");
-            Check(preview.CanOpenFile && preview.PreferredAppLabel == "Preferred app: BetterScreenShot",
-                "image preview should show its preferred app in the corner");
-            Check(preview.ChangeProgramButton.Content is WpfImage, "selected program should replace the settings glyph with an icon");
-            if (screenshotHandler?.Icon is not null)
-            {
-                for (var attempt = 0; attempt < 10 &&
-                     (preview.ChangeProgramButton.Content as WpfImage)?.Source != screenshotHandler.Icon; attempt++)
-                    PumpDispatcher(TimeSpan.FromMilliseconds(100));
-                Check((preview.ChangeProgramButton.Content as WpfImage)?.Source == screenshotHandler.Icon,
-                    "selected BetterScreenShot icon should appear on the program button");
-            }
-            var imageChoice = FileOpener.LoadSelection(".png", settingsPath);
-            var imageChooser = imageChoice is null ? preview.OpenButton : preview.ChangeProgramButton;
-            imageChooser.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
-            for (var attempt = 0; attempt < 10 && preview.ProgramMenu?.Items.Count <= 2; attempt++)
-                PumpDispatcher(TimeSpan.FromMilliseconds(100));
-            var programMenu = preview.ProgramMenu;
-            Check(programMenu?.IsOpen == true && programMenu.Items.OfType<MenuItem>()
-                .Any(item => Equals(item.Header, ShellFileHandlers.ListAsync(".png").GetAwaiter().GetResult()[0].DisplayName)),
-                "Change program should show Windows Open With choices");
-            Check(programMenu!.Items.OfType<MenuItem>().Any(item => item.Icon is WpfImage icon && icon.Source is not null),
-                "program menu should display application icons");
-            programMenu!.IsOpen = false;
-            preview.Width = 420;
-            PumpDispatcher(TimeSpan.FromMilliseconds(100));
-            var change = preview.ChangeProgramButton;
-            var rightEdge = change.TransformToAncestor(preview).TransformBounds(new System.Windows.Rect(change.RenderSize)).Right;
-            Check(rightEdge <= preview.ActualWidth, "preferred app controls should fit in a narrow preview window");
-            preview.Width = 900;
+            Check(preview.CanEditImage, "image preview should show editor controls");
             Check(preview.Topmost, "preview should appear above other windows");
             other.Show();
             other.Activate();
@@ -382,56 +264,19 @@ internal static class Program
             preview.Hide();
             preview.ShowFile(folder.FullName);
             PumpDispatcher(TimeSpan.FromMilliseconds(150));
-            Check(!preview.CanOpenFile, "folder preview should not show file program controls");
+            Check(!preview.CanEditImage, "folder preview should not show editor controls");
             Check(ContainsText(preview, "LOCATION") && ContainsText(preview, folder.FullName),
                 "folder preview should show a labeled location");
             Check(ContainsText(preview, "SIZE") && ContainsText(preview, "CONTENTS"),
                 "folder preview should show size and item count fields");
             var json = Path.Combine(_folder, "window.json");
-            File.WriteAllText(json, "{\"items\":[" + string.Join(',', Enumerable.Range(0, 300).Select(i => $"{{\"number\":{i}}}")) + "]}");
+            File.WriteAllText(json, "{\"ready\":true}");
             preview.Hide();
             preview.ShowFile(json);
-            Check(preview.CanOpenFile && preview.PreferredAppLabel == "Preferred app: VS Code",
-                "JSON preview should show its preferred app in the corner");
-            var jsonChoice = FileOpener.LoadSelection(".json", settingsPath);
-            Check(preview.PreferredAppLabel == (jsonChoice is null ? "Preferred app: none" : $"Preferred app: {jsonChoice.DisplayName}"),
-                "JSON corner label should match the chosen app");
-            var jsonChooser = jsonChoice is null ? preview.OpenButton : preview.ChangeProgramButton;
-            jsonChooser.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
-            for (var attempt = 0; attempt < 10 && preview.ProgramMenu?.Items.Count <= 2; attempt++)
-                PumpDispatcher(TimeSpan.FromMilliseconds(100));
-            var jsonHandlers = ShellFileHandlers.ListAsync(".json").GetAwaiter().GetResult();
-            Check(preview.ProgramMenu?.IsOpen == true &&
-                  (jsonHandlers.Count == 0 || preview.ProgramMenu.Items.OfType<MenuItem>()
-                      .Any(item => Equals(item.Header, jsonHandlers[0].DisplayName))),
-                "JSON menu should show available programs");
-            preview.ProgramMenu!.IsOpen = false;
+            Check(!preview.CanEditImage, "JSON preview should not show editor controls");
             for (var attempt = 0; attempt < 10 && !ContainsText(preview, json); attempt++)
                 PumpDispatcher(TimeSpan.FromMilliseconds(100));
             Check(ContainsText(preview, json), "JSON files should open the JSON preview view");
-            PumpDispatcher(TimeSpan.FromMilliseconds(100));
-            var scrollBar = FindVisual<WpfScrollBar>(preview, bar => bar.Orientation == System.Windows.Controls.Orientation.Vertical && bar.IsVisible);
-            Check(scrollBar is not null && scrollBar.ActualWidth <= 12, "JSON preview should use the narrow themed scrollbar");
-            var track = scrollBar!.Template.FindName("PART_Track", scrollBar) as Track;
-            Check(track is not null && scrollBar.Maximum > scrollBar.Minimum, "themed scrollbar must keep its draggable track");
-            var thumb = FindVisual<Border>(track!.Thumb, border => border.Background is SolidColorBrush);
-            Check(thumb?.Background is SolidColorBrush brush && brush.Color == System.Windows.Media.Color.FromRgb(98, 113, 133),
-                "JSON preview scrollbar thumb should use the dark theme color");
-            var docx = Path.Combine(_folder, "window.docx");
-            CreateZip(docx, ("word/document.xml",
-                "<w:document xmlns:w='http://schemas.openxmlformats.org/wordprocessingml/2006/main'><w:body/></w:document>"));
-            preview.Hide();
-            preview.ShowFile(docx);
-            Check(preview.CanOpenFile && preview.PreferredAppLabel == "Preferred app: Word",
-                "Word preview should offer a separately chosen program");
-            var unknown = Path.Combine(_folder, "window.unknown");
-            File.WriteAllText(unknown, "sample");
-            preview.Hide();
-            preview.ShowFile(unknown);
-            Check(preview.CanOpenFile && preview.PreferredAppLabel == "Preferred app: none" &&
-                  Equals(preview.OpenButton.Content, "Choose app"),
-                "unconfigured file types should offer a program choice");
-            Check(preview.ChangeProgramButton.Content is TextBlock, "unconfigured file types should show a settings glyph");
         }
         finally
         {
@@ -448,14 +293,6 @@ internal static class Program
         for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
             if (ContainsText(VisualTreeHelper.GetChild(root, i), value)) return true;
         return false;
-    }
-
-    private static T? FindVisual<T>(DependencyObject root, Func<T, bool> matches) where T : DependencyObject
-    {
-        if (root is T item && matches(item)) return item;
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-            if (FindVisual(VisualTreeHelper.GetChild(root, i), matches) is { } child) return child;
-        return null;
     }
 
     private static void PumpDispatcher(TimeSpan duration)

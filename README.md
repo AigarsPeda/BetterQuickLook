@@ -19,7 +19,7 @@ The x86 build runs natively on x86 Windows and through Windows compatibility sup
 ## Preview coverage
 
 - Images use the image decoders installed in Windows. Common JPEG, PNG, GIF, BMP, TIFF, ICO, and other formats with installed codecs can be displayed. A codec is required for formats Windows cannot decode.
-- Every file preview shows its **Preferred app** in the lower-right corner. Use the settings icon to choose a program from Windows' Open With list or browse for its `.exe`. The chosen program's icon then replaces the settings icon; click it to choose a different program. **Open** uses the saved choice. The menu shows available program icons, using a generic icon when Windows does not provide one. BetterQuickLook remembers separate choices for images, JSON, Word documents, Excel workbooks, and other file extensions. Choices are stored for the current Windows user and do not change Windows' default apps. Existing image editor choices still work.
+- Image previews have an **Edit image** button. The first click lets you choose Paint or browse to an editor `.exe`. BetterQuickLook saves the choice for the current Windows user, so later clicks open that editor directly. Use **Change editor** to pick a different program. The preview closes when the editor starts.
 - `.docx` and `.xlsx` use the installed Windows preview handler when available. A bundled reader shows document text or the first worksheet's first 100 rows and 16 columns when no handler is available.
 - Older `.doc`, `.xls`, and some macro-enabled Office formats require a Windows preview handler, usually supplied by Microsoft Office.
 - Folders show their location, total file size, and counts of files and subfolders. Size is calculated in the background. The scan stops after 100,000 items; linked and inaccessible items are excluded, and partial results are labeled.
@@ -30,7 +30,7 @@ The bundled Word and Excel reader is a content preview, not a full layout render
 
 ## Tests
 
-The tests cover Desktop and Explorer shortcut eligibility, active Explorer tabs, PNG and JPEG decoding, corrupt images, preferred apps by file type, Windows Open With listings and menus, Word and Excel content, malformed documents, JSON formatting and parse errors, folder sizes and scan limits, Desktop Shell selection, focus changes, and reopening after the title bar close button is used. Run the visible-window tests with `--open-with-smoke` to also launch and close Paint with a temporary image.
+The tests cover Desktop and Explorer shortcut eligibility, active Explorer tabs, PNG and JPEG decoding, corrupt images, editor preferences and launch arguments, Word and Excel content, malformed documents, JSON formatting and parse errors, folder sizes and scan limits, Desktop Shell selection, focus changes, and reopening after the title bar close button is used.
 
 ```powershell
 dotnet build .\tests\BetterQuickLook.Tests.csproj -c Release -r win-x86

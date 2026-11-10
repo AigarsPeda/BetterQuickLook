@@ -27,32 +27,23 @@ internal sealed class PreviewWindow : Window
     private readonly TextBlock _title;
     private readonly TextBlock _details;
     private readonly Grid _body;
-    private readonly TextBlock _preferredApp;
-    private readonly WpfButton _openButton;
-    private readonly WpfButton _changeProgramButton;
-    private readonly string? _settingsPath;
+    private readonly WpfButton _editButton;
+    private readonly WpfButton _changeEditorButton;
     private ShellPreview? _shellPreview;
     private JsonPreviewView? _jsonView;
     private CancellationTokenSource? _folderScan;
     private int _request;
     private bool _allowClose;
-    private bool _programMenuOpen;
-    private bool _programDialogOpen;
-    private string? _currentFilePath;
-    private int _iconRequest;
-    private int _launchRequest;
+    private bool _editorMenuOpen;
+    private bool _editorDialogOpen;
+    private string? _currentImagePath;
 
-    internal bool IsChoosingProgram => _programMenuOpen || _programDialogOpen;
-    internal bool IsProgramButtonFocused => _openButton.IsKeyboardFocusWithin || _changeProgramButton.IsKeyboardFocusWithin;
-    internal bool CanOpenFile => _openButton.Visibility == Visibility.Visible;
-    internal string PreferredAppLabel => _preferredApp.Text;
-    internal WpfButton OpenButton => _openButton;
-    internal WpfButton ChangeProgramButton => _changeProgramButton;
-    internal WpfContextMenu? ProgramMenu { get; private set; }
+    internal bool IsChoosingEditor => _editorMenuOpen || _editorDialogOpen;
+    internal bool IsEditorButtonFocused => _editButton.IsKeyboardFocusWithin || _changeEditorButton.IsKeyboardFocusWithin;
+    internal bool CanEditImage => _editButton.Visibility == Visibility.Visible;
 
-    public PreviewWindow(string? settingsPath = null)
+    public PreviewWindow()
     {
-        _settingsPath = settingsPath;
         Title = "BetterQuickLook";
         Width = 900;
         Height = 650;
@@ -89,7 +80,6 @@ internal sealed class PreviewWindow : Window
         footer.ColumnDefinitions.Add(new ColumnDefinition());
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var hint = new TextBlock
         {
             Text = "Space or Esc to close  •  Select a file in File Explorer to preview it",
@@ -99,37 +89,18 @@ internal sealed class PreviewWindow : Window
             VerticalAlignment = VerticalAlignment.Center
         };
         footer.Children.Add(hint);
-        _preferredApp = new TextBlock
-        {
-            Foreground = new SolidColorBrush(Color.FromRgb(166, 174, 187)),
-            FontSize = 12,
-            VerticalAlignment = VerticalAlignment.Center,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxWidth = 190,
-            Margin = new Thickness(8, 0, 10, 0),
-            Visibility = Visibility.Collapsed
-        };
-        Grid.SetColumn(_preferredApp, 1);
-        footer.Children.Add(_preferredApp);
-        _openButton = MakeFooterButton("Choose app");
-        _openButton.Click += (_, _) => OpenCurrentFile();
-        Grid.SetColumn(_openButton, 2);
-        footer.Children.Add(_openButton);
-        _changeProgramButton = MakeFooterButton("");
-        _changeProgramButton.Click += (_, _) => ShowProgramChoices(_changeProgramButton);
-        _changeProgramButton.Padding = new Thickness(7, 5, 7, 5);
-        _changeProgramButton.MinWidth = 34;
-        _changeProgramButton.MinHeight = 30;
-        _changeProgramButton.Margin = new Thickness(8, 0, 0, 0);
-        Grid.SetColumn(_changeProgramButton, 3);
-        footer.Children.Add(_changeProgramButton);
+        _editButton = MakeFooterButton("Edit image");
+        _editButton.Click += (_, _) => OpenImageInEditor();
+        Grid.SetColumn(_editButton, 1);
+        footer.Children.Add(_editButton);
+        _changeEditorButton = MakeFooterButton("Change editor");
+        _changeEditorButton.Click += (_, _) => ShowEditorChoices(_changeEditorButton);
+        _changeEditorButton.Margin = new Thickness(8, 0, 0, 0);
+        Grid.SetColumn(_changeEditorButton, 2);
+        footer.Children.Add(_changeEditorButton);
         Grid.SetRow(footer, 2);
         root.Children.Add(footer);
-        SizeChanged += (_, _) =>
-        {
-            hint.Visibility = ActualWidth < 740 ? Visibility.Collapsed : Visibility.Visible;
-            _preferredApp.MaxWidth = ActualWidth < 600 ? 120 : 190;
-        };
+
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -154,14 +125,9 @@ internal sealed class PreviewWindow : Window
         _body.Children.Clear();
         _jsonView?.Dispose();
         _jsonView = null;
-        _currentFilePath = null;
-        _iconRequest++;
-        _launchRequest++;
-        _preferredApp.Visibility = Visibility.Collapsed;
-        _openButton.Visibility = Visibility.Collapsed;
-        _changeProgramButton.Visibility = Visibility.Collapsed;
-        _openButton.IsEnabled = true;
-        _changeProgramButton.IsEnabled = true;
+        _currentImagePath = null;
+        _editButton.Visibility = Visibility.Collapsed;
+        _changeEditorButton.Visibility = Visibility.Collapsed;
 
         var info = new FileInfo(path);
         _title.Text = info.Name;
@@ -177,9 +143,14 @@ internal sealed class PreviewWindow : Window
         if (Directory.Exists(path)) { ShowFolder(path); return; }
 
         var ext = info.Extension.ToLowerInvariant();
-        _currentFilePath = path;
-        _ = ShellFileHandlers.ListAsync(ext);
-        RefreshPreferredApp();
+        if (IsLikelyImage(ext))
+        {
+            _currentImagePath = path;
+            var chosenEditor = ImageEditor.Load();
+            _editButton.Content = chosenEditor is null ? "Edit image" : $"Edit in {ImageEditor.DisplayName(chosenEditor)}";
+            _editButton.Visibility = Visibility.Visible;
+            _changeEditorButton.Visibility = Visibility.Visible;
+        }
         if (ext is ".json" or ".jsonc")
         {
             ShowJson(path);
@@ -238,211 +209,89 @@ internal sealed class PreviewWindow : Window
         Cursor = System.Windows.Input.Cursors.Hand
     };
 
-    private async void RefreshPreferredApp()
+    private void OpenImageInEditor()
     {
-        if (_currentFilePath is null) return;
-        var filePath = _currentFilePath;
-        var iconRequest = ++_iconRequest;
-        var extension = Path.GetExtension(filePath);
-        var selection = FileOpener.LoadSelection(extension, _settingsPath);
-        _preferredApp.Text = selection is null ? "Preferred app: none" : $"Preferred app: {selection.DisplayName}";
-        _preferredApp.ToolTip = _preferredApp.Text;
-        _preferredApp.Visibility = Visibility.Visible;
-        _openButton.Content = selection is null ? "Choose app" : "Open";
-        _openButton.Visibility = Visibility.Visible;
-        _changeProgramButton.Content = selection is null
-            ? new TextBlock { Text = "\uE713", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 16 }
-            : ProgramIcon(ProgramIcons.Fallback);
-        _changeProgramButton.ToolTip = selection is null
-            ? "Choose a program"
-            : $"Change program (currently {selection.DisplayName})";
-        _changeProgramButton.Visibility = Visibility.Visible;
-        if (selection is null) return;
-
-        BitmapSource? icon;
-        if (selection.HandlerName is { } handlerName)
-        {
-            var handlers = await ShellFileHandlers.ListAsync(extension);
-            icon = handlers.FirstOrDefault(handler => ShellFileHandlers.Matches(handler, handlerName, selection.DisplayName))?.Icon;
-            if (icon is null) icon = await ProgramIcons.ExtractAsync(handlerName);
-        }
-        else icon = await ProgramIcons.ExtractAsync(selection.ExecutablePath);
-
-        _ = Dispatcher.BeginInvoke(new Action(() =>
-        {
-            if (_currentFilePath == filePath && iconRequest == _iconRequest)
-                _changeProgramButton.Content = ProgramIcon(icon ?? ProgramIcons.Fallback);
-        }));
+        if (_currentImagePath is null) return;
+        var editor = ImageEditor.Load();
+        if (editor is null) ShowEditorChoices(_editButton);
+        else LaunchEditor(editor);
     }
 
-    private static WpfImage ProgramIcon(BitmapSource icon) => new()
+    private void ShowEditorChoices(WpfButton anchor)
     {
-        Source = icon,
-        Width = 18,
-        Height = 18,
-        Stretch = Stretch.Uniform
-    };
-
-    private void OpenCurrentFile()
-    {
-        if (_currentFilePath is null) return;
-        var extension = Path.GetExtension(_currentFilePath);
-        var selection = FileOpener.LoadSelection(extension, _settingsPath);
-        if (selection is null) ShowProgramChoices(_openButton);
-        else LaunchProgram(selection);
-    }
-
-    private async void ShowProgramChoices(WpfButton anchor)
-    {
-        if (_currentFilePath is null) return;
-        var filePath = _currentFilePath;
-        var extension = Path.GetExtension(filePath);
+        if (_currentImagePath is null) return;
         var menu = new WpfContextMenu
         {
             PlacementTarget = anchor,
             Background = new SolidColorBrush(Color.FromRgb(38, 43, 51)),
-            Foreground = Brushes.White,
-            MaxHeight = 460
+            Foreground = Brushes.White
         };
-        ProgramMenu = menu;
-        menu.Items.Add(new WpfMenuItem { Header = "Finding available programs…", IsEnabled = false });
+        var paint = ImageEditor.FindPaint();
+        if (paint is not null)
+        {
+            var paintItem = new WpfMenuItem { Header = "Paint" };
+            paintItem.Click += (_, _) =>
+            {
+                menu.IsOpen = false;
+                Dispatcher.BeginInvoke(() => ChooseEditor(paint));
+            };
+            menu.Items.Add(paintItem);
+        }
         var browseItem = new WpfMenuItem { Header = "Choose another program…" };
         browseItem.Click += (_, _) =>
         {
             menu.IsOpen = false;
-            Dispatcher.BeginInvoke(BrowseForProgram);
+            Dispatcher.BeginInvoke(BrowseForEditor);
         };
         menu.Items.Add(browseItem);
-        menu.Opened += (_, _) => _programMenuOpen = true;
-        menu.Closed += (_, _) => _programMenuOpen = false;
+        menu.Opened += (_, _) => _editorMenuOpen = true;
+        menu.Closed += (_, _) => _editorMenuOpen = false;
         menu.IsOpen = true;
-
-        var handlers = await ShellFileHandlers.ListAsync(extension);
-        _ = Dispatcher.BeginInvoke(new Action(() => PopulateProgramMenu(menu, browseItem, filePath, extension, handlers)));
     }
 
-    private void PopulateProgramMenu(WpfContextMenu menu, WpfMenuItem browseItem, string filePath,
-        string extension, IReadOnlyList<ShellFileHandlers.Handler> handlers)
+    private void BrowseForEditor()
     {
-        if (!menu.IsOpen || _currentFilePath != filePath) return;
-        menu.Items.Clear();
-        var current = FileOpener.LoadSelection(extension, _settingsPath);
-        var showedOther = false;
-        foreach (var handler in handlers)
-        {
-            if (!handler.Recommended && !showedOther && menu.Items.Count > 0)
-            {
-                menu.Items.Add(new Separator());
-                showedOther = true;
-            }
-            var item = new WpfMenuItem
-            {
-                Header = handler.DisplayName,
-                Icon = ProgramIcon(handler.Icon ?? ProgramIcons.Fallback),
-                IsChecked = current?.HandlerName is { } name && ShellFileHandlers.Matches(handler, name, current.DisplayName)
-            };
-            item.Click += (_, _) =>
-            {
-                menu.IsOpen = false;
-                Dispatcher.BeginInvoke(() => ChooseHandler(handler, filePath));
-            };
-            menu.Items.Add(item);
-        }
-        var paint = IsLikelyImage(extension) ? FileOpener.FindPaint() : null;
-        if (paint is not null && !handlers.Any(handler => handler.Name.Contains("mspaint", StringComparison.OrdinalIgnoreCase)))
-        {
-            var paintItem = new WpfMenuItem
-            {
-                Header = "Paint",
-                Icon = ProgramIcon(ProgramIcons.Fallback)
-            };
-            paintItem.Click += (_, _) =>
-            {
-                menu.IsOpen = false;
-                Dispatcher.BeginInvoke(() => ChooseExecutable(paint));
-            };
-            menu.Items.Add(paintItem);
-            _ = ProgramIcons.ExtractAsync(paint).ContinueWith(task => Dispatcher.BeginInvoke(new Action(() =>
-            {
-                if (menu.IsOpen && task.IsCompletedSuccessfully && task.Result is { } icon)
-                    paintItem.Icon = ProgramIcon(icon);
-            })));
-        }
-        if (menu.Items.Count > 0) menu.Items.Add(new Separator());
-        menu.Items.Add(browseItem);
-    }
-
-    private void BrowseForProgram()
-    {
-        _programDialogOpen = true;
+        _editorDialogOpen = true;
         try
         {
             var dialog = new EditorFileDialog
             {
-                Title = "Choose a program",
+                Title = "Choose an image editor",
                 Filter = "Programs (*.exe)|*.exe",
                 CheckFileExists = true,
                 Multiselect = false
             };
-            if (dialog.ShowDialog(this) == true) ChooseExecutable(dialog.FileName);
+            if (dialog.ShowDialog(this) == true) ChooseEditor(dialog.FileName);
         }
-        finally { _programDialogOpen = false; }
+        finally { _editorDialogOpen = false; }
     }
 
-    private void ChooseExecutable(string executablePath)
+    private void ChooseEditor(string editorPath)
     {
-        if (_currentFilePath is null) return;
         try
         {
-            FileOpener.SaveExecutable(Path.GetExtension(_currentFilePath), executablePath, _settingsPath);
-            RefreshPreferredApp();
-            LaunchProgram(FileOpener.LoadSelection(Path.GetExtension(_currentFilePath), _settingsPath)!);
+            ImageEditor.Save(editorPath);
+            _editButton.Content = $"Edit in {ImageEditor.DisplayName(editorPath)}";
+            LaunchEditor(editorPath);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            System.Windows.MessageBox.Show(this, error.Message, "Could not save program choice");
+            System.Windows.MessageBox.Show(this, error.Message, "Could not save editor choice");
         }
     }
 
-    private void ChooseHandler(ShellFileHandlers.Handler handler, string filePath)
+    private void LaunchEditor(string editorPath)
     {
-        if (_currentFilePath != filePath) return;
+        if (_currentImagePath is null) return;
         try
         {
-            FileOpener.SaveHandler(Path.GetExtension(filePath), handler.Name, handler.DisplayName, _settingsPath);
-            RefreshPreferredApp();
-            LaunchProgram(new FileOpener.Selection(null, handler.Name, handler.DisplayName));
+            Process.Start(ImageEditor.CreateStartInfo(editorPath, _currentImagePath));
+            Hide();
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        catch (Exception error) when (error is IOException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
-            System.Windows.MessageBox.Show(this, error.Message, "Could not save program choice");
+            System.Windows.MessageBox.Show(this, error.Message, "Could not open image editor");
         }
-    }
-
-    private void LaunchProgram(FileOpener.Selection selection)
-    {
-        if (_currentFilePath is null) return;
-        var filePath = _currentFilePath;
-        var request = ++_launchRequest;
-        _openButton.IsEnabled = false;
-        _changeProgramButton.IsEnabled = false;
-        _openButton.Content = "Opening…";
-        Task launch = selection.HandlerName is { } handlerName
-            ? ShellFileHandlers.OpenAsync(Path.GetExtension(filePath), handlerName, selection.DisplayName, filePath)
-            : Task.Run(() => Process.Start(FileOpener.CreateStartInfo(selection.ExecutablePath!, filePath)));
-        _ = launch.ContinueWith(task => Dispatcher.BeginInvoke(new Action(() =>
-        {
-            var error = task.Exception?.GetBaseException();
-            if (request != _launchRequest || _currentFilePath != filePath) return;
-            _openButton.IsEnabled = true;
-            _changeProgramButton.IsEnabled = true;
-            if (error is null) { Hide(); return; }
-            RefreshPreferredApp();
-            if (error is FileNotFoundException && selection.HandlerName is not null)
-                ShowProgramChoices(_changeProgramButton);
-            else
-                System.Windows.MessageBox.Show(this, error.Message, "Could not open file");
-        })));
     }
 
     private void ShowJson(string path)
@@ -674,7 +523,9 @@ internal sealed class PreviewWindow : Window
         return bitmap;
     }
 
-    private static bool IsLikelyImage(string ext) => FileOpener.IsImageExtension(ext);
+    private static bool IsLikelyImage(string ext) => ext is
+        ".jpg" or ".jpeg" or ".png" or ".gif" or ".bmp" or ".tif" or ".tiff" or
+        ".webp" or ".heic" or ".heif" or ".avif" or ".ico" or ".wdp" or ".jxr";
 
     private static string DescribeType(string ext) => string.IsNullOrEmpty(ext)
         ? "File" : ext.TrimStart('.').ToUpperInvariant() + " file";
@@ -692,14 +543,9 @@ internal sealed class PreviewWindow : Window
     public new void Hide()
     {
         _request++;
-        _iconRequest++;
-        _launchRequest++;
-        _currentFilePath = null;
-        _preferredApp.Visibility = Visibility.Collapsed;
-        _openButton.Visibility = Visibility.Collapsed;
-        _changeProgramButton.Visibility = Visibility.Collapsed;
-        _openButton.IsEnabled = true;
-        _changeProgramButton.IsEnabled = true;
+        _currentImagePath = null;
+        _editButton.Visibility = Visibility.Collapsed;
+        _changeEditorButton.Visibility = Visibility.Collapsed;
         CancelFolderScan();
         _shellPreview?.Dispose();
         _shellPreview = null;
