@@ -398,15 +398,9 @@ internal static partial class Program
             Check(preview.IsVisible, "preview should open");
             Check(preview.CanOpenFile && preview.OpenButtonLabel == "Open in BetterScreenShot",
                 "image preview should name its preferred app on the Open button");
-            Check(preview.ChangeProgramButton.Content is WpfImage, "selected program should replace the settings glyph with an icon");
-            if (screenshotHandler?.Icon is not null)
-            {
-                for (var attempt = 0; attempt < 10 &&
-                     (preview.ChangeProgramButton.Content as WpfImage)?.Source != screenshotHandler.Icon; attempt++)
-                    PumpDispatcher(TimeSpan.FromMilliseconds(100));
-                Check((preview.ChangeProgramButton.Content as WpfImage)?.Source == screenshotHandler.Icon,
-                    "selected BetterScreenShot icon should appear on the program button");
-            }
+            var pickerIcon = preview.ChangeProgramButton.Content;
+            Check(pickerIcon is System.Windows.Shapes.Path { Data: not null },
+                "the picker should use the sliders icon when an app is saved");
             var imageChoice = FileOpener.LoadSelection(".png", settingsPath);
             var imageChooser = imageChoice is null ? preview.OpenButton : preview.ChangeProgramButton;
             imageChooser.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
@@ -504,7 +498,8 @@ internal static partial class Program
             preview.ShowFile(unknown);
             Check(preview.CanOpenFile && preview.OpenButtonLabel == "Choose app",
                 "unconfigured file types should offer a program choice");
-            Check(preview.ChangeProgramButton.Content is TextBlock, "unconfigured file types should show a settings glyph");
+            Check(ReferenceEquals(preview.ChangeProgramButton.Content, pickerIcon),
+                "the picker should keep the same sliders icon when no app is saved");
             OpenShortcut(preview).Execute(null, preview);
             Check(preview.ProgramMenu?.IsOpen == true, "Ctrl+Enter should open the picker when no program is saved");
             preview.ProgramMenu!.IsOpen = false;

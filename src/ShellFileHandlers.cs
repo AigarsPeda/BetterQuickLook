@@ -8,7 +8,6 @@ internal static class ShellFileHandlers
 {
     internal sealed record Handler(string Name, string DisplayName, bool Recommended, BitmapSource? Icon = null);
     private static readonly Dictionary<string, Task<IReadOnlyList<Handler>>> CachedLists = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly Dictionary<(string Extension, string Name, string Label), Task<BitmapSource?>> PreferredIcons = new();
 
     internal static Task<IReadOnlyList<Handler>> ListAsync(string extension)
     {
@@ -60,59 +59,14 @@ internal static class ShellFileHandlers
          string.Equals(Path.GetFileName(handler.Name), Path.GetFileName(name), StringComparison.OrdinalIgnoreCase) &&
          string.Equals(handler.DisplayName, displayName, StringComparison.OrdinalIgnoreCase));
 
-    internal static async Task<BitmapSource?> PreferredIconAsync(string extension, string name, string displayName)
+    internal static Task OpenAsync(string extension, string handlerName, string displayName, string filePath)
     {
-        Task<IReadOnlyList<Handler>>? list;
-        lock (CachedLists) CachedLists.TryGetValue(extension, out list);
-        if (list is not null)
-        {
-            var handlers = await list.ConfigureAwait(false);
-            var icon = handlers.FirstOrDefault(handler => Matches(handler, name, displayName))?.Icon;
-            return icon ?? await ProgramIcons.ExtractAsync(name).ConfigureAwait(false);
-        }
-
-        Task<BitmapSource?> preferred;
-        lock (PreferredIcons)
-        {
-            var key = (extension, name, displayName);
-            if (!PreferredIcons.TryGetValue(key, out preferred!))
-                PreferredIcons[key] = preferred = RunOnSta(() => FindPreferredIcon(extension, name, displayName), "BetterQuickLook Preferred Icon");
-        }
-        return await preferred.ConfigureAwait(false);
-    }
-
-    private static BitmapSource? FindPreferredIcon(string extension, string name, string displayName)
-    {
-        try
-        {
-            if (extension.Length > 0)
-                foreach (var handler in Enumerate(extension))
-                {
-                    try
-                    {
-                        var candidate = ReadString(handler.GetName);
-                        var label = ReadString(handler.GetUIName);
-                        if (candidate is not null && label is not null && Matches(new Handler(candidate, label, false), name, displayName))
-                            return ReadIcon(handler, candidate);
-                    }
-                    finally { Marshal.ReleaseComObject(handler); }
-                }
-        }
-        catch (COMException) { }
-        return ProgramIcons.Extract(name);
-    }
-
-    internal static Task OpenAsync(string extension, string handlerName, string displayName, string filePath) =>
-        RunOnSta(() => { Open(extension, handlerName, displayName, filePath); return true; }, "BetterQuickLook Open File");
-
-    private static Task<T> RunOnSta<T>(Func<T> work, string threadName)
-    {
-        var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var worker = new Thread(() =>
         {
-            try { completion.SetResult(work()); }
+            try { Open(extension, handlerName, displayName, filePath); completion.SetResult(); }
             catch (Exception error) { completion.SetException(error); }
-        }) { IsBackground = true, Name = threadName };
+        }) { IsBackground = true, Name = "BetterQuickLook Open File" };
         worker.SetApartmentState(ApartmentState.STA);
         worker.Start();
         return completion.Task;

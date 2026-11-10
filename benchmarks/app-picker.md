@@ -1,6 +1,6 @@
 # App picker performance
 
-The full Windows app list now loads on the first picker request for each extension. Later requests reuse the list. A preview with a saved program looks up that program’s icon separately and can reuse its icon from an existing list.
+The full Windows app list loads on the first picker request for each extension. Later requests reuse the list. At the time of this benchmark, a preview with a saved program looked up its icon separately. The sliders button introduced later uses a fixed vector icon.
 
 ## Controlled comparison
 

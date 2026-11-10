@@ -39,7 +39,6 @@ internal sealed class PreviewWindow : Window
     private bool _programDialogOpen;
     private bool _isLaunchingProgram;
     private string? _currentFilePath;
-    private int _iconRequest;
     private int _launchRequest;
 
     internal bool IsChoosingProgram => ProgramMenu?.IsOpen == true || _programDialogOpen;
@@ -114,6 +113,9 @@ internal sealed class PreviewWindow : Window
         Grid.SetColumn(_openButton, 1);
         footer.Children.Add(_openButton);
         _changeProgramButton = MakeFooterButton();
+        _changeProgramButton.Content = new System.Windows.Shapes.Path { Style = (Style)FindResource("ProgramPickerIcon") };
+        _changeProgramButton.ToolTip = "Open with another app";
+        System.Windows.Automation.AutomationProperties.SetName(_changeProgramButton, "Open with another app");
         _changeProgramButton.Click += (_, _) => ShowProgramChoices(_changeProgramButton);
         _changeProgramButton.Padding = new Thickness(0);
         _changeProgramButton.Width = 34;
@@ -149,7 +151,6 @@ internal sealed class PreviewWindow : Window
         _jsonView?.Dispose();
         _jsonView = null;
         _currentFilePath = null;
-        _iconRequest++;
         _launchRequest++;
         _openButton.Visibility = Visibility.Collapsed;
         _changeProgramButton.Visibility = Visibility.Collapsed;
@@ -223,34 +224,16 @@ internal sealed class PreviewWindow : Window
         Visibility = Visibility.Collapsed
     };
 
-    private async void RefreshPreferredApp()
+    private void RefreshPreferredApp()
     {
         if (_currentFilePath is null) return;
-        var filePath = _currentFilePath;
-        var iconRequest = ++_iconRequest;
-        var extension = Path.GetExtension(filePath);
+        var extension = Path.GetExtension(_currentFilePath);
         var selection = FileOpener.LoadSelection(extension, _settingsPath);
         _openLabel.Text = selection is null ? "Choose app" : $"Open in {selection.DisplayName}";
         _openButton.ToolTip = $"{_openLabel.Text} (Ctrl+Enter)";
         System.Windows.Automation.AutomationProperties.SetName(_openButton, _openLabel.Text);
         _openButton.Visibility = Visibility.Visible;
-        _changeProgramButton.Content = selection is null
-            ? new TextBlock { Text = "\uE713", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 16 }
-            : ProgramIcon(ProgramIcons.Fallback);
-        _changeProgramButton.ToolTip = "Open with another app";
-        System.Windows.Automation.AutomationProperties.SetName(_changeProgramButton, "Open with another app");
         _changeProgramButton.Visibility = Visibility.Visible;
-        if (selection is null) return;
-
-        var icon = selection.HandlerName is { } handlerName
-            ? await ShellFileHandlers.PreferredIconAsync(extension, handlerName, selection.DisplayName)
-            : await ProgramIcons.ExtractAsync(selection.ExecutablePath);
-
-        _ = Dispatcher.BeginInvoke(new Action(() =>
-        {
-            if (_currentFilePath == filePath && iconRequest == _iconRequest)
-                _changeProgramButton.Content = ProgramIcon(icon ?? ProgramIcons.Fallback);
-        }));
     }
 
     private static WpfImage ProgramIcon(BitmapSource icon) => new()
@@ -673,7 +656,6 @@ internal sealed class PreviewWindow : Window
     {
         if (ProgramMenu is { } menu) menu.IsOpen = false;
         _request++;
-        _iconRequest++;
         _launchRequest++;
         _currentFilePath = null;
         _openButton.Visibility = Visibility.Collapsed;
