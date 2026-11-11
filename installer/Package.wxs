@@ -17,6 +17,8 @@
                       Target="[#ApplicationExe]" WorkingDirectory="InstallFolder" />
             <RegistryValue Root="HKCU" Key="Software\BetterQuickLook\Installer" Name="Installed"
                            Type="integer" Value="1" KeyPath="yes" />
+            <RegistryValue Root="HKCU" Key="Software\Microsoft\Windows\CurrentVersion\Run"
+                           Name="BetterQuickLook" Type="string" Value="&quot;[#ApplicationExe]&quot;" />
             <RemoveFolder Id="RemoveInstallFolder" On="uninstall" />
             <RemoveFolder Id="RemoveEmptyProgramsFolder" Directory="LocalPrograms" On="uninstall" />
           </Component>
@@ -34,7 +36,7 @@
       <Dialog Id="Welcome" Width="320" Height="132" Title="BetterQuickLook Setup" NoMinimize="yes">
         <Control Id="Heading" Type="Text" X="16" Y="14" Width="288" Height="20" Text="{\SetupHeading}Install BetterQuickLook" />
         <Control Id="Description" Type="Text" X="16" Y="44" Width="288" Height="42"
-                 Text="Setup installs BetterQuickLook for your Windows account and adds it to the Start menu. If BetterQuickLook is running, exit it from the notification area before continuing." />
+                 Text="Setup installs BetterQuickLook for your account and starts it automatically when you sign in. Exit any running copy from the notification area before continuing." />
         <Control Id="Install" Type="PushButton" X="188" Y="104" Width="56" Height="17" Text="Install" Default="yes">
           <Publish Event="EndDialog" Value="Return" />
         </Control>

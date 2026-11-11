@@ -1,0 +1,25 @@
+{
+  "Mode": "shell",
+  "Samples": [
+    {
+      "HandoffMs": 543.052,
+      "VisibleWindowMs": 2185.8679
+    },
+    {
+      "HandoffMs": 404.1335,
+      "VisibleWindowMs": 2012.3045
+    },
+    {
+      "HandoffMs": 436.0484,
+      "VisibleWindowMs": 2058.2312
+    },
+    {
+      "HandoffMs": 413.4382,
+      "VisibleWindowMs": 2058.5246
+    },
+    {
+      "HandoffMs": 424.5386,
+      "VisibleWindowMs": 2033.5362
+    }
+  ]
+}

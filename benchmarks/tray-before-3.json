@@ -1,0 +1,189 @@
+{
+  "Executable": "C:\\Users\\AigarsPeda\\Documents\\ChatGPT\\work\\BetterQuickLookIdleBaseline\\BetterQuickLook.exe",
+  "Sha256": "C41F3D9628A588D789493D74AA64E4113D133B1FC120F9BCC23BDD774986D3C4",
+  "TimestampUtc": "2026-11-11T07:02:48.3900064Z",
+  "LogicalProcessors": 16,
+  "SettleSeconds": 20,
+  "Samples": [
+    {
+      "Seconds": 1.015757,
+      "CpuMs": 0.0,
+      "CpuPercentOneCore": 0.0,
+      "WorkingSetMiB": 178.1953125,
+      "PrivateCommitMiB": 85.21875,
+      "Handles": 343,
+      "Threads": 12
+    },
+    {
+      "Seconds": 2.0555025,
+      "CpuMs": 0.0,
+      "CpuPercentOneCore": 0.0,
+      "WorkingSetMiB": 178.1953125,
+      "PrivateCommitMiB": 85.21875,
+      "Handles": 343,
+      "Threads": 12
+    },
+    {
+      "Seconds": 3.077949,
+      "CpuMs": 0.0,
+      "CpuPercentOneCore": 0.0,
+      "WorkingSetMiB": 178.1953125,
+      "PrivateCommitMiB": 85.21875,
+      "Handles": 343,
+      "Threads": 12
+    },
+    {
+      "Seconds": 4.105314,
+      "CpuMs": 0.0,
+      "CpuPercentOneCore": 0.0,
+      "WorkingSetMiB": 178.1953125,
+      "PrivateCommitMiB": 85.21875,
+      "Handles": 343,
+      "Threads": 12
+    },
+    {
+      "Seconds": 5.1247137,
+      "CpuMs": 0.0,
+      "CpuPercentOneCore": 0.0,
+      "WorkingSetMiB": 178.1953125,
+      "PrivateCommitMiB": 85.21875,
+      "Handles": 343,
+      "Threads": 12
+    },
+    {
+      "Seconds": 6.1454727,
+      "CpuMs": 0.0,
+      "CpuPercentOneCore": 0.0,
+      "WorkingSetMiB": 178.1953125,
+      "PrivateCommitMiB": 85.21875,
+      "Handles": 343,
+      "Threads": 12
+    },
+    {
+      "Seconds": 7.1589295,
+      "CpuMs": 0.0,
+      "CpuPercentOneCore": 0.0,
+      "WorkingSetMiB": 178.1953125,
+      "PrivateCommitMiB": 85.21875,
+      "Handles": 343,
+      "Threads": 12
+    },
+    {
+      "Seconds": 8.1708908,
+      "CpuMs": 0.0,
+      "CpuPercentOneCore": 0.0,
+      "WorkingSetMiB": 178.1953125,
+      "PrivateCommitMiB": 85.21875,
+      "Handles": 343,
+      "Threads": 12
+    },
+    {
+      "Seconds": 9.1858797,
+      "CpuMs": 0.0,
+      "CpuPercentOneCore": 0.0,
+      "WorkingSetMiB": 178.1953125,
+      "PrivateCommitMiB": 85.21875,
+      "Handles": 343,
+      "Threads": 12
+    },
+    {
+      "Seconds": 10.2046994,
+      "CpuMs": 31.25,
+      "CpuPercentOneCore": 0.30623146037991084,
+      "WorkingSetMiB": 178.14453125,
+      "PrivateCommitMiB": 85.078125,
+      "Handles": 343,
+      "Threads": 10
+    },
+    {
+      "Seconds": 11.2214351,
+      "CpuMs": 31.25,
+      "CpuPercentOneCore": 0.2784848793538003,
+      "WorkingSetMiB": 178.14453125,
+      "PrivateCommitMiB": 85.078125,
+      "Handles": 344,
+      "Threads": 10
+    },
+    {
+      "Seconds": 12.2407281,
+      "CpuMs": 31.25,
+      "CpuPercentOneCore": 0.2552952712020456,
+      "WorkingSetMiB": 178.14453125,
+      "PrivateCommitMiB": 85.078125,
+      "Handles": 344,
+      "Threads": 10
+    },
+    {
+      "Seconds": 13.2630678,
+      "CpuMs": 31.25,
+      "CpuPercentOneCore": 0.23561667987552626,
+      "WorkingSetMiB": 178.14453125,
+      "PrivateCommitMiB": 85.078125,
+      "Handles": 344,
+      "Threads": 10
+    },
+    {
+      "Seconds": 14.2767859,
+      "CpuMs": 31.25,
+      "CpuPercentOneCore": 0.21888680140534994,
+      "WorkingSetMiB": 178.14453125,
+      "PrivateCommitMiB": 85.078125,
+      "Handles": 344,
+      "Threads": 10
+    },
+    {
+      "Seconds": 15.2926098,
+      "CpuMs": 31.25,
+      "CpuPercentOneCore": 0.20434706965452032,
+      "WorkingSetMiB": 178.14453125,
+      "PrivateCommitMiB": 85.078125,
+      "Handles": 344,
+      "Threads": 10
+    },
+    {
+      "Seconds": 16.3068321,
+      "CpuMs": 31.25,
+      "CpuPercentOneCore": 0.1916374670957702,
+      "WorkingSetMiB": 178.14453125,
+      "PrivateCommitMiB": 85.078125,
+      "Handles": 344,
+      "Threads": 10
+    },
+    {
+      "Seconds": 17.3198806,
+      "CpuMs": 31.25,
+      "CpuPercentOneCore": 0.18042849556364723,
+      "WorkingSetMiB": 178.14453125,
+      "PrivateCommitMiB": 85.0078125,
+      "Handles": 344,
+      "Threads": 10
+    },
+    {
+      "Seconds": 18.3327623,
+      "CpuMs": 31.25,
+      "CpuPercentOneCore": 0.17045985481413242,
+      "WorkingSetMiB": 178.14453125,
+      "PrivateCommitMiB": 85.0078125,
+      "Handles": 344,
+      "Threads": 10
+    },
+    {
+      "Seconds": 19.352995,
+      "CpuMs": 31.25,
+      "CpuPercentOneCore": 0.16147371505030617,
+      "WorkingSetMiB": 178.14453125,
+      "PrivateCommitMiB": 85.0078125,
+      "Handles": 344,
+      "Threads": 10
+    },
+    {
+      "Seconds": 20.3654712,
+      "CpuMs": 31.25,
+      "CpuPercentOneCore": 0.1534459953963648,
+      "WorkingSetMiB": 178.14453125,
+      "PrivateCommitMiB": 85.0078125,
+      "Handles": 344,
+      "Threads": 10
+    }
+  ]
+}

@@ -1,0 +1,167 @@
+{
+  "FirstImageMs": 339.942,
+  "BeforePreview": [
+    {
+      "Seconds": 1.0130787,
+      "CpuMs": 0,
+      "WorkingSetMiB": 53.73046875,
+      "PrivateCommitMiB": 16.8125,
+      "ManagedLiveMiB": 0.9220046997070312,
+      "Handles": 394
+    },
+    {
+      "Seconds": 2.0294351,
+      "CpuMs": 15.625,
+      "WorkingSetMiB": 54.02734375,
+      "PrivateCommitMiB": 16.7734375,
+      "ManagedLiveMiB": 0.9297142028808594,
+      "Handles": 394
+    },
+    {
+      "Seconds": 3.0425521,
+      "CpuMs": 15.625,
+      "WorkingSetMiB": 54.04296875,
+      "PrivateCommitMiB": 16.7734375,
+      "ManagedLiveMiB": 0.9297142028808594,
+      "Handles": 394
+    },
+    {
+      "Seconds": 4.0666726,
+      "CpuMs": 62.5,
+      "WorkingSetMiB": 54.0546875,
+      "PrivateCommitMiB": 16.77734375,
+      "ManagedLiveMiB": 0.9297142028808594,
+      "Handles": 394
+    },
+    {
+      "Seconds": 5.0755753,
+      "CpuMs": 78.125,
+      "WorkingSetMiB": 54.11328125,
+      "PrivateCommitMiB": 16.78125,
+      "ManagedLiveMiB": 0.9375572204589844,
+      "Handles": 394
+    },
+    {
+      "Seconds": 6.0983846,
+      "CpuMs": 78.125,
+      "WorkingSetMiB": 54.125,
+      "PrivateCommitMiB": 16.78125,
+      "ManagedLiveMiB": 0.9375572204589844,
+      "Handles": 394
+    },
+    {
+      "Seconds": 7.1109775,
+      "CpuMs": 93.75,
+      "WorkingSetMiB": 54.171875,
+      "PrivateCommitMiB": 16.78125,
+      "ManagedLiveMiB": 0.9454002380371094,
+      "Handles": 394
+    },
+    {
+      "Seconds": 8.1311815,
+      "CpuMs": 93.75,
+      "WorkingSetMiB": 53.70703125,
+      "PrivateCommitMiB": 16.2890625,
+      "ManagedLiveMiB": 0.9454002380371094,
+      "Handles": 394
+    },
+    {
+      "Seconds": 9.1476374,
+      "CpuMs": 109.375,
+      "WorkingSetMiB": 53.71875,
+      "PrivateCommitMiB": 16.2890625,
+      "ManagedLiveMiB": 0.9454002380371094,
+      "Handles": 394
+    },
+    {
+      "Seconds": 10.1668294,
+      "CpuMs": 125,
+      "WorkingSetMiB": 53.7265625,
+      "PrivateCommitMiB": 16.2890625,
+      "ManagedLiveMiB": 0.9529991149902344,
+      "Handles": 394
+    }
+  ],
+  "AfterPreview": [
+    {
+      "Seconds": 1.0082687,
+      "CpuMs": 15.625,
+      "WorkingSetMiB": 161.90625,
+      "PrivateCommitMiB": 113.32421875,
+      "ManagedLiveMiB": 5.815380096435547,
+      "Handles": 601
+    },
+    {
+      "Seconds": 2.0296145,
+      "CpuMs": 31.25,
+      "WorkingSetMiB": 161.9453125,
+      "PrivateCommitMiB": 113.32421875,
+      "ManagedLiveMiB": 5.815380096435547,
+      "Handles": 601
+    },
+    {
+      "Seconds": 3.0509727,
+      "CpuMs": 46.875,
+      "WorkingSetMiB": 161.9765625,
+      "PrivateCommitMiB": 113.33203125,
+      "ManagedLiveMiB": 5.823223114013672,
+      "Handles": 601
+    },
+    {
+      "Seconds": 4.0681711,
+      "CpuMs": 62.5,
+      "WorkingSetMiB": 148.453125,
+      "PrivateCommitMiB": 99.7421875,
+      "ManagedLiveMiB": 5.823223114013672,
+      "Handles": 601
+    },
+    {
+      "Seconds": 5.081926,
+      "CpuMs": 78.125,
+      "WorkingSetMiB": 148.45703125,
+      "PrivateCommitMiB": 99.7421875,
+      "ManagedLiveMiB": 5.831066131591797,
+      "Handles": 601
+    },
+    {
+      "Seconds": 6.1075047,
+      "CpuMs": 93.75,
+      "WorkingSetMiB": 148.45703125,
+      "PrivateCommitMiB": 99.80078125,
+      "ManagedLiveMiB": 5.838909149169922,
+      "Handles": 601
+    },
+    {
+      "Seconds": 7.1308829,
+      "CpuMs": 109.375,
+      "WorkingSetMiB": 148.78515625,
+      "PrivateCommitMiB": 99.80078125,
+      "ManagedLiveMiB": 5.838909149169922,
+      "Handles": 601
+    },
+    {
+      "Seconds": 8.1598558,
+      "CpuMs": 125,
+      "WorkingSetMiB": 148.65625,
+      "PrivateCommitMiB": 99.671875,
+      "ManagedLiveMiB": 5.846752166748047,
+      "Handles": 601
+    },
+    {
+      "Seconds": 9.1827169,
+      "CpuMs": 140.625,
+      "WorkingSetMiB": 148.65625,
+      "PrivateCommitMiB": 99.671875,
+      "ManagedLiveMiB": 5.846752166748047,
+      "Handles": 603
+    },
+    {
+      "Seconds": 10.211865,
+      "CpuMs": 156.25,
+      "WorkingSetMiB": 148.65625,
+      "PrivateCommitMiB": 99.671875,
+      "ManagedLiveMiB": 5.854595184326172,
+      "Handles": 603
+    }
+  ]
+}

@@ -23,6 +23,8 @@ internal static partial class Program
     private static int Main()
     {
         var arguments = Environment.GetCommandLineArgs();
+        if (arguments.Contains("--launch-benchmark")) return LaunchBenchmark(arguments[^3], arguments[^2], arguments[^1]);
+        if (arguments.Contains("--tray-lifecycle")) return TrayLifecycle(arguments[^1]);
         if (arguments.Contains("--benchmark-app-picker")) return BenchmarkAppPicker(arguments[^1]);
         if (arguments.Contains("--app-picker-sample")) return AppPickerSample(arguments[^3], arguments[^2], arguments[^1]);
         if (arguments.Contains("--benchmark")) return Performance.Run(arguments);
@@ -34,10 +36,16 @@ internal static partial class Program
             Run("Active Explorer tab selection", ActiveExplorerTab);
             Run("PNG and JPEG decode at preview size", Images);
             Run("Corrupt image rejection", CorruptImage);
+            Run("Preview work cancellation, concurrency, and resource disposal", PreviewWorkLimits);
+            Run("JSON display text and syntax colors", JsonDisplay);
             Run("Preferred apps by file type and launch arguments", PreferredApps);
+            Run("Direct editor delivery, timeout and duplicate-open protection", ProgramLaunchDelivery);
             Run("Windows Open With programs", FilePrograms);
+            Run("Program icon cache reuse and file replacement", ProgramIconCache);
             Run("Word text and empty document", Word);
+            Run("Document text limits and Unicode boundaries", DocumentTextLimits);
             Run("Excel shared, inline, and numeric cells", Excel);
+            Run("Excel selective shared text, sparse cells, and preview limits", ExcelEdges);
             Run("Missing and malformed document parts", InvalidDocuments);
             Run("JSON formatting, tree, and edge cases", JsonFiles);
             Run("Folder size and scan edge cases", Folders);
@@ -344,8 +352,8 @@ internal static partial class Program
             Check(data.Document is not null && data.Notice is null, "valid JSON should parse");
             Check(data.Text.Contains("\n") && data.Text.Contains("Rīga"), "JSON should be formatted and preserve Unicode");
             var view = new JsonPreviewView(valid, data);
-            var paragraph = (Paragraph)view.FormattedText.Document.Blocks.FirstBlock!;
-            Check(paragraph.Inlines.OfType<Run>().Any(run => run.Text == "\"name\""),
+            Check(view.FormattedText.Document.Blocks.OfType<Paragraph>().SelectMany(paragraph => paragraph.Inlines.OfType<Run>())
+                    .Any(run => run.Text == "\"name\""),
                 "property names should receive syntax highlighting");
             var root = (System.Windows.Controls.TreeViewItem)view.Tree.Items[0];
             Check(root.Items.Count == 1, "tree children should be deferred until expansion");
@@ -357,6 +365,15 @@ internal static partial class Program
         File.WriteAllText(jsonc, "{ // note\n \"value\": 1, }");
         using (var data = JsonPreviewReader.Read(jsonc))
             Check(data.Document is not null && data.Text.Contains("\"value\""), "JSONC comments and trailing commas should be supported");
+
+        foreach (var encoding in new System.Text.Encoding[] { new System.Text.UTF8Encoding(true),
+                     System.Text.Encoding.Unicode, System.Text.Encoding.BigEndianUnicode,
+                     System.Text.Encoding.UTF32, new System.Text.UTF32Encoding(true, true) })
+        {
+            File.WriteAllText(valid, "{\"text\":\"Rīga 😀\"}", encoding);
+            using var data = JsonPreviewReader.Read(valid);
+            Check(data.Document?.RootElement.GetProperty("text").GetString() == "Rīga 😀", "BOM and wide encodings remain supported");
+        }
 
         var invalid = Path.Combine(_folder, "broken.json");
         File.WriteAllText(invalid, "{\"ok\": 1,\n\"bad\": }");
@@ -393,10 +410,6 @@ internal static partial class Program
         FileOpener.SaveHandler(".json", "Example.Code", "VS Code", settingsPath);
         FileOpener.SaveHandler(".docx", "Example.Word", "Word", settingsPath);
         var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        app.Resources.MergedDictionaries.Add(new ResourceDictionary
-        {
-            Source = new Uri("/BetterQuickLook;component/ScrollBarTheme.xaml", UriKind.Relative)
-        });
         var preview = new PreviewWindow(settingsPath);
         var other = new Window { Width = 100, Height = 100, ShowInTaskbar = false };
         try
@@ -510,6 +523,7 @@ internal static partial class Program
             OpenShortcut(preview).Execute(null, preview);
             Check(preview.ProgramMenu?.IsOpen == true, "Ctrl+Enter should open the picker when no program is saved");
             preview.ProgramMenu!.IsOpen = false;
+            Run("Rapid preview switching and stale Office callbacks", () => PreviewReplacement(preview, path, json, docx, unknown));
             if (Environment.GetCommandLineArgs().Contains("--open-with-smoke"))
                 Run("Open once, remember, and Ctrl+Enter launch Paint", () => OpenWithSmoke(preview, settingsPath));
         }
@@ -519,6 +533,43 @@ internal static partial class Program
             preview.ClosePermanently();
             app.Shutdown();
         }
+    }
+
+    private static void PreviewReplacement(PreviewWindow preview, string image, string json, string document, string unknown)
+    {
+        using var started = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var active = PreviewWork.RunAsync(() =>
+        {
+            started.Set();
+            if (!release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException();
+            return 0;
+        }, CancellationToken.None);
+        try
+        {
+            Check(started.Wait(TimeSpan.FromSeconds(5)), "blocked decoder starts");
+            preview.ShowFile(json);
+            preview.ShowFile(image);
+            preview.ShowFile(document);
+            preview.ShowFile(unknown);
+            PumpDispatcher(TimeSpan.FromMilliseconds(100));
+            Check(ContainsText(preview, unknown), "stale deferred Office callback cannot replace the current preview");
+        }
+        finally { release.Set(); }
+        active.GetAwaiter().GetResult();
+        PumpDispatcher(TimeSpan.FromMilliseconds(100));
+        Check(ContainsText(preview, unknown), "canceled image and JSON work cannot replace the current preview");
+        preview.ShowFile(image);
+        for (var i = 0; i < 20 && FindVisual<WpfImage>(preview, item => item.Source is not null) is null; i++)
+            PumpDispatcher(TimeSpan.FromMilliseconds(100));
+        Check(FindVisual<WpfImage>(preview, item => item.Source is not null) is not null, "image loading recovers after cancellation");
+        preview.ShowFile(json);
+        preview.Hide();
+        PumpDispatcher(TimeSpan.FromMilliseconds(100));
+        Check(!preview.IsVisible, "completion never reopens a closed preview");
+        preview.ShowFile(json);
+        for (var i = 0; i < 20 && !ContainsText(preview, json); i++) PumpDispatcher(TimeSpan.FromMilliseconds(100));
+        Check(ContainsText(preview, json), "JSON can reopen after cancellation");
     }
 
     private static bool ContainsText(DependencyObject root, string value)

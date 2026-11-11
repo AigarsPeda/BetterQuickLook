@@ -31,13 +31,21 @@ internal static class JsonPreviewReader
                 "Large file: showing the first 100,000 characters. Tree view is unavailable.", null);
         }
 
-        var raw = File.ReadAllText(path);
+        var bytes = File.ReadAllBytes(path);
+        // JSON is normally UTF-8. Parse those bytes directly, avoiding a full
+        // UTF-16 string followed by another UTF-8 conversion inside the parser.
+        // Keep StreamReader's BOM support for existing UTF-16/UTF-32 files.
+        var wideEncoding = bytes.Length >= 2 && ((bytes[0] == 0xFF && bytes[1] == 0xFE) ||
+            (bytes[0] == 0xFE && bytes[1] == 0xFF)) ||
+            bytes.Length >= 4 && bytes[0] == 0 && bytes[1] == 0 && bytes[2] == 0xFE && bytes[3] == 0xFF;
+        var raw = wideEncoding ? File.ReadAllText(path) : null;
+        var offset = bytes.AsSpan().StartsWith(new byte[] { 0xEF, 0xBB, 0xBF }) ? 3 : 0;
         var options = Path.GetExtension(path).Equals(".jsonc", StringComparison.OrdinalIgnoreCase)
             ? new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true }
             : default;
         try
         {
-            var document = JsonDocument.Parse(raw, options);
+            var document = raw is not null ? JsonDocument.Parse(raw, options) : JsonDocument.Parse(bytes.AsMemory(offset), options);
             string formatted;
             try { formatted = FormatPrefix(document.RootElement); }
             catch { document.Dispose(); throw; }
@@ -50,7 +58,7 @@ internal static class JsonPreviewReader
         {
             var line = (error.LineNumber ?? 0) + 1;
             var position = (error.BytePositionInLine ?? 0) + 1;
-            return new JsonPreviewData(Clip(raw),
+            return new JsonPreviewData(Clip(raw ?? Encoding.UTF8.GetString(bytes, offset, bytes.Length - offset)),
                 $"Invalid JSON at line {line}, byte {position}: {error.Message}", null);
         }
     }

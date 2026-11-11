@@ -24,22 +24,30 @@ internal static class ExplorerSelection
             var candidates = new List<(string Name, string? Path)>();
             foreach (var window in (dynamic)windows)
             {
+                object? document = null, selected = null, item = null;
                 try
                 {
                     if ((long)((dynamic)window).HWND != foreground.ToInt64()) continue;
-                    dynamic document = ((dynamic)window).Document;
-                    dynamic selected = document.SelectedItems();
+                    document = ((dynamic)window).Document;
+                    selected = ((dynamic)document).SelectedItems();
                     string locationName = (string)((dynamic)window).LocationName;
-                    if ((int)selected.Count != 1)
+                    if ((int)((dynamic)selected).Count != 1)
                     {
                         candidates.Add((locationName, null));
                         continue;
                     }
-                    string path = (string)selected.Item(0).Path;
+                    item = ((dynamic)selected).Item(0);
+                    string path = (string)((dynamic)item).Path;
                     candidates.Add((locationName, File.Exists(path) || Directory.Exists(path) ? path : null));
                 }
                 catch (Exception error) when (error is COMException or Microsoft.CSharp.RuntimeBinder.RuntimeBinderException or InvalidCastException) { }
-                finally { if (Marshal.IsComObject(window)) Marshal.ReleaseComObject(window); }
+                finally
+                {
+                    Release(item);
+                    Release(selected);
+                    Release(document);
+                    Release(window);
+                }
             }
             return ChooseSelection(title, candidates);
         }
@@ -58,16 +66,30 @@ internal static class ExplorerSelection
         object? root = null;
         var desktopHandle = 0;
         object? desktop = null;
+        object? document = null, selected = null, item = null;
         try
         {
             desktop = ((dynamic)windows).FindWindowSW(ref location, ref root, 8, ref desktopHandle, 1);
             if (desktop is null) return null;
-            dynamic selected = ((dynamic)desktop).Document.SelectedItems();
-            if ((int)selected.Count != 1) return null;
-            string path = (string)selected.Item(0).Path;
+            document = ((dynamic)desktop).Document;
+            selected = ((dynamic)document).SelectedItems();
+            if ((int)((dynamic)selected).Count != 1) return null;
+            item = ((dynamic)selected).Item(0);
+            string path = (string)((dynamic)item).Path;
             return File.Exists(path) || Directory.Exists(path) ? path : null;
         }
-        finally { if (desktop is not null && Marshal.IsComObject(desktop)) Marshal.ReleaseComObject(desktop); }
+        finally
+        {
+            Release(item);
+            Release(selected);
+            Release(document);
+            Release(desktop);
+        }
+    }
+
+    private static void Release(object? value)
+    {
+        if (value is not null && Marshal.IsComObject(value)) Marshal.ReleaseComObject(value);
     }
 
     internal static string? ChooseSelection(string title, IReadOnlyList<(string Name, string? Path)> candidates)

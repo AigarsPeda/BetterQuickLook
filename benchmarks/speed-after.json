@@ -1,0 +1,83 @@
+{
+  "Runtime": "9.0.22",
+  "OS": "Microsoft Windows NT 10.0.26200.0",
+  "Bitness": 32,
+  "Samples": 7,
+  "Warmups": 2,
+  "JsonBytes": 1053891,
+  "TimestampUtc": "2026-11-11T06:13:11.553564Z",
+  "Results": [
+    {
+      "Name": "Word: 10 million characters in one text run",
+      "MedianMs": 0.5245,
+      "MinMs": 0.4808,
+      "MaxMs": 0.8186,
+      "MedianAllocatedBytes": 180164,
+      "MedianCpuMs": 0
+    },
+    {
+      "Name": "Program icon: 100 requests for the same icon",
+      "MedianMs": 3.2033,
+      "MinMs": 3.0982,
+      "MaxMs": 3.6304,
+      "MedianAllocatedBytes": 51628,
+      "MedianCpuMs": 0
+    },
+    {
+      "Name": "Excel: 100,000 shared strings, reference -1",
+      "MedianMs": 0.4032,
+      "MinMs": 0.3311,
+      "MaxMs": 0.4799,
+      "MedianAllocatedBytes": 20736,
+      "MedianCpuMs": 0
+    },
+    {
+      "Name": "Excel: 100,000 shared strings, reference 15",
+      "MedianMs": 0.4214,
+      "MinMs": 0.4035,
+      "MaxMs": 0.5114,
+      "MedianAllocatedBytes": 35868,
+      "MedianCpuMs": 0
+    },
+    {
+      "Name": "Excel: 100,000 shared strings, reference 99999",
+      "MedianMs": 33.1135,
+      "MinMs": 31.403,
+      "MaxMs": 50.8393,
+      "MedianAllocatedBytes": 35900,
+      "MedianCpuMs": 31.25
+    },
+    {
+      "Name": "Folder scan: 2,000 files",
+      "MedianMs": 0.4829,
+      "MinMs": 0.4739,
+      "MaxMs": 0.5326,
+      "MedianAllocatedBytes": 196,
+      "MedianCpuMs": 0
+    },
+    {
+      "Name": "JSON read: 15,000 objects",
+      "MedianMs": 16.0588,
+      "MinMs": 14.8976,
+      "MaxMs": 17.0012,
+      "MedianAllocatedBytes": 3613764,
+      "MedianCpuMs": 15.625
+    },
+    {
+      "Name": "JSON view: capped formatted text",
+      "MedianMs": 135.4103,
+      "MinMs": 114.1807,
+      "MaxMs": 304.8818,
+      "MedianAllocatedBytes": 17842792,
+      "MedianCpuMs": 171.875
+    },
+    {
+      "Name": "JPEG decode: 4000 x 3000",
+      "MedianMs": 20.6823,
+      "MinMs": 19.776,
+      "MaxMs": 34.8841,
+      "MedianAllocatedBytes": 4188,
+      "MedianCpuMs": 31.25
+    }
+  ]
+}

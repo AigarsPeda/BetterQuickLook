@@ -1,4 +1,5 @@
 using System.IO;
+using System.Buffers;
 using System.IO.Compression;
 using System.Text;
 using System.Xml;
@@ -26,7 +27,7 @@ internal static class DocumentPreview
         {
             if (reader.NodeType == XmlNodeType.Element && reader.LocalName == "t" && reader.NamespaceURI.EndsWith("wordprocessingml/2006/main"))
             {
-                result.Append(reader.ReadElementContentAsString());
+                AppendElementText(reader, result);
                 continue;
             }
             else if (reader.NodeType == XmlNodeType.EndElement && reader.LocalName == "p")
@@ -35,37 +36,18 @@ internal static class DocumentPreview
                 result.Append("  |  ");
             reader.Read();
         }
-        return result.Length == 0 ? "This document contains no readable text." : result.ToString();
+        return result.Length == 0 ? "This document contains no readable text." : OutputPrefix(result);
     }
 
     private static string ReadExcel(ZipArchive archive)
     {
-        var strings = new List<string>();
-        if (archive.GetEntry("xl/sharedStrings.xml") is not null)
-        {
-            using var reader = OpenXml(archive, "xl/sharedStrings.xml");
-            var current = new StringBuilder();
-            while (!reader.EOF && strings.Count < 100_000)
-            {
-                if (reader.NodeType == XmlNodeType.Element && reader.LocalName == "t")
-                {
-                    current.Append(reader.ReadElementContentAsString());
-                    continue;
-                }
-                else if (reader.NodeType == XmlNodeType.EndElement && reader.LocalName == "si")
-                {
-                    strings.Add(current.ToString());
-                    current.Clear();
-                }
-                reader.Read();
-            }
-        }
-
+        // Read the displayed cells first. Most of a workbook's shared text table
+        // belongs to rows or sheets that this preview will never show.
         using var sheet = OpenXml(archive, "xl/worksheets/sheet1.xml");
-        var result = new StringBuilder();
-        var cells = new SortedDictionary<int, string>();
-        var rows = 0;
-        while (sheet.Read() && rows < 100 && result.Length < MaxOutput)
+        var rows = new List<SortedDictionary<int, ExcelCell>>();
+        var cells = new SortedDictionary<int, ExcelCell>();
+        var needed = new HashSet<int>();
+        while (rows.Count < 100 && sheet.Read())
         {
             if (sheet.NodeType == XmlNodeType.Element && sheet.LocalName == "c")
             {
@@ -74,27 +56,110 @@ internal static class DocumentPreview
                 var type = sheet.GetAttribute("t");
                 if (column < 0 || column >= 16) continue;
                 using var cell = sheet.ReadSubtree();
-                string? value = null;
-                while (cell.Read())
-                    if (cell.NodeType == XmlNodeType.Element && cell.LocalName is "v" or "t")
-                        value = cell.ReadElementContentAsString();
-                if (value is null) continue;
-                if (type == "s" && int.TryParse(value, out var index) && index >= 0 && index < strings.Count)
-                    value = strings[index];
-                cells[column] = value.Replace('\r', ' ').Replace('\n', ' ');
+                var value = ReadCellText(cell);
+                if (value.Length == 0) continue;
+                int? sharedIndex = type == "s" && int.TryParse(value, out var index) && index >= 0 && index < 100_000
+                    ? index : null;
+                if (sharedIndex is { } required) needed.Add(required);
+                cells[column] = new ExcelCell(value, sharedIndex);
             }
-            else if (sheet.NodeType == XmlNodeType.EndElement && sheet.LocalName == "row")
+            else if (sheet.LocalName == "row" && (sheet.NodeType == XmlNodeType.EndElement || sheet.IsEmptyElement))
             {
-                if (cells.Count > 0)
-                {
-                    result.AppendLine(string.Join("\t", Enumerable.Range(0, cells.Keys.Max() + 1)
-                        .Select(i => cells.GetValueOrDefault(i, ""))));
-                    cells.Clear();
-                }
-                rows++;
+                rows.Add(cells);
+                cells = new SortedDictionary<int, ExcelCell>();
             }
         }
-        return result.Length == 0 ? "This worksheet contains no readable cells." : result.ToString();
+
+        var strings = new Dictionary<int, string>();
+        if (needed.Count > 0 && archive.GetEntry("xl/sharedStrings.xml") is not null)
+        {
+            using var reader = OpenXml(archive, "xl/sharedStrings.xml");
+            var index = 0;
+            while (needed.Count > 0 && !reader.EOF)
+            {
+                if (reader.NodeType == XmlNodeType.Element && reader.LocalName == "si")
+                {
+                    if (needed.Remove(index))
+                    {
+                        using var text = reader.ReadSubtree();
+                        strings[index] = ReadCellText(text);
+                    }
+                    else { reader.Skip(); index++; continue; }
+                    index++;
+                }
+                reader.Read();
+            }
+        }
+
+        var result = new StringBuilder();
+        foreach (var row in rows)
+        {
+            if (result.Length >= MaxOutput) break;
+            if (row.Count == 0) continue;
+            var lastColumn = row.Keys.Max();
+            for (var column = 0; column <= lastColumn && result.Length < MaxOutput; column++)
+            {
+                if (column > 0) result.Append('\t');
+                if (!row.TryGetValue(column, out var cell)) continue;
+                var value = cell.SharedIndex is { } index ? strings.GetValueOrDefault(index, cell.Value) : cell.Value;
+                value = value.Replace('\r', ' ').Replace('\n', ' ');
+                result.Append(value.AsSpan(0, Math.Min(value.Length, MaxOutput - result.Length)));
+            }
+            result.AppendLine();
+        }
+        return result.Length == 0 ? "This worksheet contains no readable cells." : OutputPrefix(result);
+    }
+
+    private sealed record ExcelCell(string Value, int? SharedIndex);
+
+    private static string ReadCellText(XmlReader reader)
+    {
+        var value = new StringBuilder();
+        while (!reader.EOF && value.Length < MaxOutput)
+        {
+            if (reader.NodeType == XmlNodeType.Element && reader.LocalName is "v" or "t")
+            {
+                AppendElementText(reader, value);
+                continue;
+            }
+            reader.Read();
+        }
+        return value.ToString();
+    }
+
+    private static string OutputPrefix(StringBuilder text)
+    {
+        var length = Math.Min(text.Length, MaxOutput);
+        if (length > 0 && char.IsHighSurrogate(text[length - 1])) length--;
+        return text.ToString(0, length);
+    }
+
+    private static void AppendElementText(XmlReader reader, StringBuilder text)
+    {
+        if (reader.IsEmptyElement) { reader.Read(); return; }
+        var depth = reader.Depth;
+        var buffer = ArrayPool<char>.Shared.Rent(4096);
+        try
+        {
+            while (text.Length < MaxOutput && reader.Read())
+            {
+                if (reader.NodeType == XmlNodeType.EndElement && reader.Depth == depth)
+                {
+                    reader.Read();
+                    return;
+                }
+                if (reader.NodeType is not (XmlNodeType.Text or XmlNodeType.CDATA or XmlNodeType.Whitespace or XmlNodeType.SignificantWhitespace)) continue;
+                while (text.Length < MaxOutput)
+                {
+                    // XmlReader requires space for both halves of a surrogate pair.
+                    var remaining = MaxOutput - text.Length;
+                    var count = reader.ReadValueChunk(buffer, 0, Math.Min(buffer.Length, Math.Max(2, remaining)));
+                    if (count == 0) break;
+                    text.Append(buffer, 0, Math.Min(count, remaining));
+                }
+            }
+        }
+        finally { ArrayPool<char>.Shared.Return(buffer); }
     }
 
     private static int ColumnIndex(string reference)

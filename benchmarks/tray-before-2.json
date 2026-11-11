@@ -1,0 +1,99 @@
+{
+  "Executable": "C:\\Users\\AigarsPeda\\Documents\\ChatGPT\\work\\BetterQuickLookIdleBaseline\\BetterQuickLook.exe",
+  "Sha256": "C41F3D9628A588D789493D74AA64E4113D133B1FC120F9BCC23BDD774986D3C4",
+  "TimestampUtc": "2026-11-11T06:57:01.4242745Z",
+  "LogicalProcessors": 16,
+  "SettleSeconds": 5,
+  "Samples": [
+    {
+      "Seconds": 1.0150631,
+      "CpuMs": 0.0,
+      "CpuPercentOneCore": 0.0,
+      "WorkingSetMiB": 178.24609375,
+      "PrivateCommitMiB": 85.1328125,
+      "Handles": 343,
+      "Threads": 12
+    },
+    {
+      "Seconds": 2.0312337,
+      "CpuMs": 0.0,
+      "CpuPercentOneCore": 0.0,
+      "WorkingSetMiB": 178.24609375,
+      "PrivateCommitMiB": 85.1328125,
+      "Handles": 343,
+      "Threads": 12
+    },
+    {
+      "Seconds": 3.0466767,
+      "CpuMs": 0.0,
+      "CpuPercentOneCore": 0.0,
+      "WorkingSetMiB": 178.24609375,
+      "PrivateCommitMiB": 85.1328125,
+      "Handles": 343,
+      "Threads": 12
+    },
+    {
+      "Seconds": 4.0590342,
+      "CpuMs": 0.0,
+      "CpuPercentOneCore": 0.0,
+      "WorkingSetMiB": 178.24609375,
+      "PrivateCommitMiB": 85.1328125,
+      "Handles": 343,
+      "Threads": 12
+    },
+    {
+      "Seconds": 5.0780864,
+      "CpuMs": 0.0,
+      "CpuPercentOneCore": 0.0,
+      "WorkingSetMiB": 178.24609375,
+      "PrivateCommitMiB": 85.1328125,
+      "Handles": 343,
+      "Threads": 12
+    },
+    {
+      "Seconds": 6.0996312,
+      "CpuMs": 0.0,
+      "CpuPercentOneCore": 0.0,
+      "WorkingSetMiB": 178.5703125,
+      "PrivateCommitMiB": 85.1328125,
+      "Handles": 343,
+      "Threads": 12
+    },
+    {
+      "Seconds": 7.1152193,
+      "CpuMs": 0.0,
+      "CpuPercentOneCore": 0.0,
+      "WorkingSetMiB": 178.5703125,
+      "PrivateCommitMiB": 85.1328125,
+      "Handles": 343,
+      "Threads": 12
+    },
+    {
+      "Seconds": 8.1317859,
+      "CpuMs": 0.0,
+      "CpuPercentOneCore": 0.0,
+      "WorkingSetMiB": 178.5703125,
+      "PrivateCommitMiB": 85.1328125,
+      "Handles": 343,
+      "Threads": 12
+    },
+    {
+      "Seconds": 9.1465732,
+      "CpuMs": 0.0,
+      "CpuPercentOneCore": 0.0,
+      "WorkingSetMiB": 178.5703125,
+      "PrivateCommitMiB": 85.1328125,
+      "Handles": 343,
+      "Threads": 12
+    },
+    {
+      "Seconds": 10.1620021,
+      "CpuMs": 0.0,
+      "CpuPercentOneCore": 0.0,
+      "WorkingSetMiB": 178.5703125,
+      "PrivateCommitMiB": 85.1328125,
+      "Handles": 343,
+      "Threads": 12
+    }
+  ]
+}

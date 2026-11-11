@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using System.IO.Compression;
 using System.Text.Json;
 using BetterQuickLook;
 
@@ -24,6 +25,24 @@ internal static class Performance
             var picture = Path.Combine(root, "image.jpg");
             using (var bitmap = new Bitmap(4000, 3000)) bitmap.Save(picture, ImageFormat.Jpeg);
             var results = new List<object>();
+            var longWord = Path.Combine(root, "long-word.docx");
+            using (var archive = ZipFile.Open(longWord, ZipArchiveMode.Create))
+            using (var writer = new StreamWriter(archive.CreateEntry("word/document.xml").Open()))
+                writer.Write("<w:document xmlns:w='http://schemas.openxmlformats.org/wordprocessingml/2006/main'><w:p><w:r><w:t>" +
+                    new string('x', 10_000_000) + "</w:t></w:r></w:p></w:document>");
+            Measure("Word: 10 million characters in one text run", () => { _ = DocumentPreview.Read(longWord); }, results);
+            var iconPath = Path.Combine(root, "program.ico");
+            using (var iconFile = File.Create(iconPath)) SystemIcons.Application.Save(iconFile);
+            Measure("Program icon: 100 requests for the same icon", () =>
+            {
+                for (var i = 0; i < 100; i++) _ = ProgramIcons.Extract(iconPath);
+            }, results);
+            foreach (var index in new[] { -1, 15, 99_999 })
+            {
+                var workbook = ExcelFixtures.LargeWorkbook(root, index);
+                Measure($"Excel: 100,000 shared strings, reference {index}",
+                    () => { _ = DocumentPreview.Read(workbook); }, results);
+            }
             Measure("Folder scan: 2,000 files", () => { _ = FolderPreview.Scan(folder, CancellationToken.None); }, results);
             Measure("JSON read: 15,000 objects", () => { using var data = JsonPreviewReader.Read(json); }, results);
             using var preview = JsonPreviewReader.Read(json);

@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
 using Brushes = System.Windows.Media.Brushes;
+using Brush = System.Windows.Media.Brush;
 using Color = System.Windows.Media.Color;
 using FontFamily = System.Windows.Media.FontFamily;
 using Orientation = System.Windows.Controls.Orientation;
@@ -20,6 +21,10 @@ internal sealed class JsonPreviewView : Grid, IDisposable
 {
     private const int MaxTreeChildren = 500;
     private const int MaxColoredTokens = 5_000;
+    private static readonly Brush PropertyBrush = FrozenBrush(139, 213, 255);
+    private static readonly Brush StringBrush = FrozenBrush(166, 227, 161);
+    private static readonly Brush NumberBrush = FrozenBrush(250, 179, 135);
+    private static readonly Brush LiteralBrush = FrozenBrush(203, 166, 247);
     private static readonly Regex Tokens = new(
         "\"(?:\\\\.|[^\"\\\\])*\"|-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?|\\b(?:true|false|null)\\b",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -67,14 +72,15 @@ internal sealed class JsonPreviewView : Grid, IDisposable
 
         FormattedText = new WpfRichTextBox
         {
-            Document = BuildDocument(data.Text),
             IsReadOnly = true,
+            IsUndoEnabled = false,
             Background = Brushes.Transparent,
             Foreground = Brushes.White,
             BorderThickness = new Thickness(0),
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto
         };
+        BuildDocument(FormattedText, data.Text);
         Tree = new WpfTreeView
         {
             Background = Brushes.Transparent,
@@ -134,7 +140,7 @@ internal sealed class JsonPreviewView : Grid, IDisposable
         other.Background = new SolidColorBrush(Color.FromRgb(43, 48, 56));
     }
 
-    private static FlowDocument BuildDocument(string text)
+    private static void BuildDocument(WpfRichTextBox box, string text)
     {
         var document = new FlowDocument
         {
@@ -143,23 +149,35 @@ internal sealed class JsonPreviewView : Grid, IDisposable
             Foreground = new SolidColorBrush(Color.FromRgb(224, 231, 239)),
             PagePadding = new Thickness(16)
         };
-        var paragraph = new Paragraph { Margin = new Thickness(0) };
-        document.Blocks.Add(paragraph);
-        var position = 0;
-        var colored = 0;
-        foreach (Match match in Tokens.Matches(text))
+        box.Document = document;
+        // Insert into one text container and publish one change, rather than
+        // allocating and merging a separate text container for every token.
+        using (box.DeclareChangeBlock())
         {
-            if (++colored > MaxColoredTokens) break;
-            if (match.Index > position) paragraph.Inlines.Add(new Run(text[position..match.Index]));
-            var token = match.Value;
-            var color = token[0] == '"'
-                ? IsProperty(text, match.Index + match.Length) ? Color.FromRgb(139, 213, 255) : Color.FromRgb(166, 227, 161)
-                : token[0] == '-' || char.IsDigit(token[0]) ? Color.FromRgb(250, 179, 135) : Color.FromRgb(203, 166, 247);
-            paragraph.Inlines.Add(new Run(token) { Foreground = new SolidColorBrush(color) });
-            position = match.Index + match.Length;
+            var paragraph = new Paragraph { Margin = new Thickness(0) };
+            document.Blocks.Add(paragraph);
+            var position = 0;
+            var colored = 0;
+            foreach (Match match in Tokens.Matches(text))
+            {
+                if (++colored > MaxColoredTokens) break;
+                if (match.Index > position) _ = new Run(text[position..match.Index], paragraph.ContentEnd);
+                var token = match.Value;
+                var brush = token[0] == '"'
+                    ? IsProperty(text, match.Index + match.Length) ? PropertyBrush : StringBrush
+                    : token[0] == '-' || char.IsDigit(token[0]) ? NumberBrush : LiteralBrush;
+                _ = new Run(token, paragraph.ContentEnd) { Foreground = brush };
+                position = match.Index + match.Length;
+            }
+            if (position < text.Length) _ = new Run(text[position..], paragraph.ContentEnd);
         }
-        if (position < text.Length) paragraph.Inlines.Add(new Run(text[position..]));
-        return document;
+    }
+
+    private static Brush FrozenBrush(byte red, byte green, byte blue)
+    {
+        var brush = new SolidColorBrush(Color.FromRgb(red, green, blue));
+        brush.Freeze();
+        return brush;
     }
 
     private static bool IsProperty(string text, int position)

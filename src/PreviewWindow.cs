@@ -33,8 +33,10 @@ internal sealed class PreviewWindow : Window
     private readonly WpfButton _changeProgramButton;
     private readonly string? _settingsPath;
     private ShellPreview? _shellPreview;
+    private System.Windows.Forms.Integration.WindowsFormsHost? _nativeHost;
     private JsonPreviewView? _jsonView;
     private CancellationTokenSource? _folderScan;
+    private CancellationTokenSource? _previewLoad;
     private int _request;
     private bool _allowClose;
     private bool _programDialogOpen;
@@ -53,6 +55,11 @@ internal sealed class PreviewWindow : Window
     public PreviewWindow(string? settingsPath = null)
     {
         _settingsPath = settingsPath;
+        // Load preview-only resources on the first preview, not during tray startup.
+        Resources.MergedDictionaries.Add(new ResourceDictionary
+        {
+            Source = new Uri("/BetterQuickLook;component/ScrollBarTheme.xaml", UriKind.Relative)
+        });
         Resources.MergedDictionaries.Add(new ResourceDictionary
         {
             Source = new Uri("/BetterQuickLook;component/PreviewControls.xaml", UriKind.Relative)
@@ -152,9 +159,9 @@ internal sealed class PreviewWindow : Window
     {
         if (ProgramMenu is { } menu) menu.IsOpen = false;
         _request++;
+        _previewLoad?.Cancel();
         CancelFolderScan();
-        _shellPreview?.Dispose();
-        _shellPreview = null;
+        DisposeNativePreview();
         _body.Children.Clear();
         _jsonView?.Dispose();
         _jsonView = null;
@@ -188,9 +195,10 @@ internal sealed class PreviewWindow : Window
         if (ext is ".docx" or ".xlsx")
         {
             ShowMessage("Loading document preview…");
+            var current = _request;
             Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
             {
-                if (!IsVisible) return;
+                if (current != _request || !IsVisible) return;
                 if (!ShowNativePreview(path)) ShowDocumentText(path);
             });
             return;
@@ -199,25 +207,17 @@ internal sealed class PreviewWindow : Window
         if (IsLikelyImage(ext))
         {
             ShowMessage("Loading image…");
-            var current = _request;
-            _ = Task.Run(() => DecodeImage(path)).ContinueWith(task =>
-                Dispatcher.Invoke(() =>
-                {
-                    if (current != _request || !IsVisible) return;
-                    if (task.IsCompletedSuccessfully && task.Result is { } image)
-                        ShowImage(image);
-                    else
-                        ShowMessage("No image decoder is installed for this format.");
-                }));
+            _ = LoadPreviewAsync(() => DecodeImage(path), ShowImage, "No image decoder is installed for this format.");
             return;
         }
 
         // The native handler supplies rich previews for Office's older .doc/.xls formats.
         if (ext is ".doc" or ".xls" or ".docm" or ".xlsm" or ".xlsb")
         {
+            var current = _request;
             Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
             {
-                if (!IsVisible) return;
+                if (current != _request || !IsVisible) return;
                 if (!ShowNativePreview(path)) ShowMessage("No preview handler is installed for this format.");
             });
             return;
@@ -399,9 +399,7 @@ internal sealed class PreviewWindow : Window
         if (_isLaunchingProgram || _currentFilePath is not { } filePath) return;
         var request = ++_launchRequest;
         SetProgramLaunching(true);
-        Task launch = selection.HandlerName is { } handlerName
-            ? ShellFileHandlers.OpenAsync(Path.GetExtension(filePath), handlerName, selection.DisplayName, filePath)
-            : Task.Run(() => Process.Start(FileOpener.CreateStartInfo(selection.ExecutablePath!, filePath)));
+        Task launch = ProgramLauncher.OpenAsync(selection, filePath);
         _ = launch.ContinueWith(task => Dispatcher.BeginInvoke(new Action(() =>
         {
             var error = task.Exception?.GetBaseException();
@@ -433,27 +431,54 @@ internal sealed class PreviewWindow : Window
     private void ShowJson(string path)
     {
         ShowMessage("Loading JSON preview…");
+        _ = LoadPreviewAsync(() => JsonPreviewReader.Read(path), data =>
+        {
+            _body.Children.Clear();
+            _jsonView = new JsonPreviewView(path, data);
+            _body.Children.Add(_jsonView);
+        }, "Could not read this JSON file. File details are shown above.");
+    }
+
+    private async Task LoadPreviewAsync<T>(Func<T> read, Action<T> show, string failureMessage)
+    {
         var current = _request;
-        _ = Task.Run(() => JsonPreviewReader.Read(path)).ContinueWith(task =>
-            Dispatcher.BeginInvoke(() =>
+        using var cancellation = new CancellationTokenSource();
+        _previewLoad = cancellation;
+        try
+        {
+            var result = await PreviewWork.RunAsync(read, cancellation.Token).ConfigureAwait(false);
+            if (Dispatcher.HasShutdownStarted)
             {
-                if (!task.IsCompletedSuccessfully)
-                {
-                    _ = task.Exception;
-                    if (current == _request && IsVisible)
-                        ShowMessage("Could not read this JSON file. File details are shown above.");
-                    return;
-                }
-                var data = task.Result;
+                if (result is IDisposable disposable) disposable.Dispose();
+                return;
+            }
+            await Dispatcher.InvokeAsync(() =>
+            {
                 if (current != _request || !IsVisible)
                 {
-                    data.Dispose();
+                    if (result is IDisposable disposable) disposable.Dispose();
                     return;
                 }
-                _body.Children.Clear();
-                _jsonView = new JsonPreviewView(path, data);
-                _body.Children.Add(_jsonView);
-            }));
+                show(result);
+            });
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        catch (Exception)
+        {
+            if (!Dispatcher.HasShutdownStarted)
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    if (current == _request && IsVisible) ShowMessage(failureMessage);
+                });
+        }
+        finally
+        {
+            if (!Dispatcher.HasShutdownStarted)
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    if (ReferenceEquals(_previewLoad, cancellation)) _previewLoad = null;
+                });
+        }
     }
 
     private void ShowFolder(string path)
@@ -567,7 +592,7 @@ internal sealed class PreviewWindow : Window
         _body.Children.Add(host);
         try { _shellPreview = ShellPreview.TryOpen(path, panel.Handle); }
         catch { _shellPreview = null; }
-        if (_shellPreview is not null) return true;
+        if (_shellPreview is not null) { _nativeHost = host; return true; }
         _body.Children.Clear();
         host.Dispose();
         return false;
@@ -576,16 +601,8 @@ internal sealed class PreviewWindow : Window
     private void ShowDocumentText(string path)
     {
         ShowMessage("Loading document text…");
-        var current = _request;
-        _ = Task.Run(() => DocumentPreview.Read(path)).ContinueWith(task =>
-            Dispatcher.Invoke(() =>
-            {
-                if (current != _request || !IsVisible) return;
-                if (task.IsCompletedSuccessfully && task.Result is { } preview)
-                    ShowText(preview);
-                else
-                    ShowMessage("Could not read this document. File details are shown above.");
-            }));
+        _ = LoadPreviewAsync(() => DocumentPreview.Read(path), ShowText,
+            "Could not read this document. File details are shown above.");
     }
 
     private void ShowImage(BitmapSource image)
@@ -678,14 +695,14 @@ internal sealed class PreviewWindow : Window
     {
         if (ProgramMenu is { } menu) menu.IsOpen = false;
         _request++;
+        _previewLoad?.Cancel();
         _launchRequest++;
         _currentFilePath = null;
         _openButton.Visibility = Visibility.Collapsed;
         _changeProgramButton.Visibility = Visibility.Collapsed;
         SetProgramLaunching(false);
         CancelFolderScan();
-        _shellPreview?.Dispose();
-        _shellPreview = null;
+        DisposeNativePreview();
         _body.Children.Clear();
         _jsonView?.Dispose();
         _jsonView = null;
@@ -704,7 +721,16 @@ internal sealed class PreviewWindow : Window
 
     public void ClosePermanently()
     {
+        Hide();
         _allowClose = true;
         Close();
+    }
+
+    private void DisposeNativePreview()
+    {
+        _shellPreview?.Dispose();
+        _shellPreview = null;
+        _nativeHost?.Dispose();
+        _nativeHost = null;
     }
 }

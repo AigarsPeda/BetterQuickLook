@@ -7,5 +7,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>BetterQuickLook</AssemblyName>
+    <Version>1.0.1</Version>
+    <!-- Cache bundled assemblies on disk so Windows can map them, rather than
+         retaining decompressed assembly copies in the tray process. -->
+    <IncludeAllContentForSelfExtract Condition="'$(PublishSingleFile)' == 'true'">true</IncludeAllContentForSelfExtract>
   </PropertyGroup>
 </Project>

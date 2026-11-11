@@ -5,7 +5,7 @@ $payload = Join-Path $PSScriptRoot 'obj\payload'
 $output = Join-Path $projectRoot 'dist'
 
 dotnet publish $project -c Release -r win-x86 --self-contained true `
-    -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+    -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:IncludeAllContentForSelfExtract=true `
     -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $payload
 if ($LASTEXITCODE -ne 0) { throw 'Publishing BetterQuickLook failed.' }
 

@@ -30,6 +30,7 @@ internal sealed class ShellPreview : IDisposable
         var type = Type.GetTypeFromCLSID(id.Value) ?? throw new COMException("Preview handler is not registered.");
         var instance = Activator.CreateInstance(type) ?? throw new COMException("Could not start preview handler.");
         IStream? stream = null;
+        ShellPreview? preview = null;
         try
         {
             if (instance is IInitializeWithStream initializeStream)
@@ -45,7 +46,7 @@ internal sealed class ShellPreview : IDisposable
             if (instance is not IPreviewHandler handler) throw new COMException("Handler cannot display a preview.");
             var panel = WinForms.Control.FromHandle(parent) as WinForms.Panel;
             if (panel is null) throw new InvalidOperationException("Preview host is unavailable.");
-            var preview = new ShellPreview(instance, handler, panel, stream);
+            preview = new ShellPreview(instance, handler, panel, stream);
             var rectangle = ClientRectangle(parent);
             handler.SetWindow(parent, ref rectangle);
             handler.DoPreview();
@@ -53,8 +54,12 @@ internal sealed class ShellPreview : IDisposable
         }
         catch
         {
-            if (stream is not null) Marshal.ReleaseComObject(stream);
-            Marshal.ReleaseComObject(instance);
+            if (preview is not null) preview.Dispose();
+            else
+            {
+                if (stream is not null) Marshal.ReleaseComObject(stream);
+                Marshal.ReleaseComObject(instance);
+            }
             throw;
         }
     }

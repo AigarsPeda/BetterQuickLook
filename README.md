@@ -4,20 +4,20 @@ BetterQuickLook opens a preview when you select one item on the Desktop or in Fi
 
 ## Windows installer
 
-Exit any running copy of BetterQuickLook from the notification area, then double-click `dist/BetterQuickLook-Setup.msi` and choose **Install**. Setup installs for your Windows account. Open BetterQuickLook from the Start menu after setup. To remove it, use **Settings → Apps → Installed apps**.
+Exit any running copy of BetterQuickLook from the notification area, then double-click `dist/BetterQuickLook-Setup.msi` and choose **Install**. Setup installs for your Windows account and registers BetterQuickLook to start quietly in the notification area whenever you sign in. Open BetterQuickLook from the Start menu to use it immediately after setup. You can disable automatic startup in **Settings → Apps → Startup**. To remove it, use **Settings → Apps → Installed apps**; uninstall also removes its startup registration. Portable copies do not register themselves for startup.
 
 To build the installer, run `./installer/Build.ps1` with the .NET 9 SDK and .NET 6 Runtime installed. The build restores the WiX SDK through NuGet and packages a fresh copy of the app.
 
 ## Single-file build
 
-The published `BetterQuickLook.exe` is portable. Copy that one file to a Windows 10 or 11 PC and run it. No .NET installation is needed. The first launch may take longer while Windows extracts the bundled desktop runtime; later launches reuse that cache.
+The published `BetterQuickLook.exe` is portable. Copy that one file to a Windows 10 or 11 PC and run it. No .NET installation is needed. The first launch of a build may take several seconds while .NET extracts its bundled runtime and assemblies into a per-user cache. Later launches reuse that cache. Loading assemblies from the cache reduces tray memory usage; it uses more cache space on disk. .NET recreates the cache if temporary files are cleaned up.
 
 Build the distributable file with the .NET 9 SDK:
 
 From the repository root:
 
 ```powershell
-dotnet publish .\src\BetterQuickLook.csproj -c Release -r win-x86 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o .\dist
+dotnet publish .\src\BetterQuickLook.csproj -c Release -r win-x86 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:IncludeAllContentForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o .\dist
 ```
 
 The x86 build runs natively on x86 Windows and through Windows compatibility support on x64 and ARM64 Windows. It was tested on x64 Windows 11; other configurations still need hands-on testing.
