@@ -1,7 +1,6 @@
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Media;
@@ -73,26 +72,12 @@ internal static partial class Program
         Check(explorer.ArgumentList.Count == 1 && explorer.ArgumentList[0] == Path.Combine(_folder, "space Rīga"), "Explorer receives one path argument");
     }
 
-    private static string CreateShortcut(string name, string target, string arguments = "")
+    private static string CreateShortcut(string name, string target, string arguments = "",
+        string description = "Preview test • Rīga", string? directory = null)
     {
         var path = Path.Combine(_folder, name + ".lnk");
-        object shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!)!;
-        object? shortcut = null;
-        try
-        {
-            shortcut = ((dynamic)shell).CreateShortcut(path);
-            ((dynamic)shortcut).TargetPath = target;
-            ((dynamic)shortcut).Arguments = arguments;
-            ((dynamic)shortcut).Description = "Preview test • Rīga";
-            ((dynamic)shortcut).WorkingDirectory = _folder;
-            ((dynamic)shortcut).Save();
-            return path;
-        }
-        finally
-        {
-            if (shortcut is not null) Marshal.FinalReleaseComObject(shortcut);
-            Marshal.FinalReleaseComObject(shell);
-        }
+        ShellLinkFixture.Save(path, target, arguments, description, directory ?? _folder);
+        return path;
     }
 
     private static void ShortcutFiles()
@@ -106,7 +91,26 @@ internal static partial class Program
             Check(Thread.CurrentThread.GetApartmentState() == ApartmentState.STA, "shortcut reader runs on STA");
             return ShortcutPreview.Read(link);
         }, CancellationToken.None, sta: true).GetAwaiter().GetResult();
-        Check(result.Status == ShortcutStatus.File && result.Target == file && result.Description.Contains("Rīga"), "native Shell target and metadata read");
+        Check(result.Status == ShortcutStatus.File, $"native shortcut status: expected File, actual {result}");
+        Check(result.Target == file, $"native shortcut target: expected '{file}', actual '{result.Target}'");
+        Check(result.Description == "Preview test • Rīga", $"native shortcut description: expected 'Preview test • Rīga', actual '{result.Description}'");
+        var unicodeDirectory = Directory.CreateDirectory(Path.Combine(_folder, "working Rīga 東京 😀")).FullName;
+        var unicodeFile = Path.Combine(unicodeDirectory, "東京 😀.json");
+        File.WriteAllText(unicodeFile, "{}");
+        const string description = "Rīga 東京 😀";
+        const string arguments = "--Rīga 東京 😀";
+        var unicodeLink = CreateShortcut("unicode 東京 😀", unicodeFile, arguments, description, unicodeDirectory);
+        var stored = File.ReadAllBytes(unicodeLink);
+        Check(stored.AsSpan().IndexOf(System.Text.Encoding.Unicode.GetBytes(description)) >= 0,
+            "fixture must store its original Unicode description before the reader runs");
+        var unicode = ShortcutPreview.Read(unicodeLink);
+        Check(unicode.Status == ShortcutStatus.File, $"Unicode target status: expected File, actual {unicode}");
+        Check(unicode.Target == unicodeFile, $"Unicode target: expected '{unicodeFile}', actual '{unicode.Target}'");
+        Check(unicode.Description == description, $"Unicode description: expected '{description}', actual '{unicode.Description}'");
+        Check(unicode.Arguments == arguments, $"Unicode arguments: expected '{arguments}', actual '{unicode.Arguments}'");
+        Check(unicode.WorkingDirectory == unicodeDirectory,
+            $"Unicode working directory: expected '{unicodeDirectory}', actual '{unicode.WorkingDirectory}'");
+        Check(stored.SequenceEqual(File.ReadAllBytes(unicodeLink)), "Unicode preview leaves shortcut bytes unchanged");
         Check(before.SequenceEqual(File.ReadAllBytes(link)), "preview must not rewrite the shortcut");
         using (File.Open(link, FileMode.Open, FileAccess.ReadWrite, FileShare.None)) { }
         Check(ShortcutPreview.Read(CreateShortcut("folder", _folder)).Status == ShortcutStatus.Folder, "folder target recognized");
