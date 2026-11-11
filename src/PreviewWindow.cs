@@ -21,10 +21,11 @@ using EditorFileDialog = Microsoft.Win32.OpenFileDialog;
 
 namespace BetterQuickLook;
 
-internal sealed class PreviewWindow : Window
+internal sealed partial class PreviewWindow : Window
 {
     private readonly TextBlock _title;
     private readonly TextBlock _details;
+    private readonly TextBlock _shortcutDetails;
     private readonly Grid _body;
     private readonly TextBlock _openLabel;
     private readonly TextBlock _openingLabel;
@@ -88,11 +89,28 @@ internal sealed class PreviewWindow : Window
         var header = new Grid { Margin = new Thickness(22, 17, 22, 13) };
         header.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         header.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        header.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         _title = new TextBlock { FontSize = 20, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
         _details = new TextBlock { FontSize = 12, Foreground = new SolidColorBrush(Color.FromRgb(166, 174, 187)), Margin = new Thickness(0, 5, 0, 0) };
-        header.Children.Add(_title);
+        var heading = new DockPanel();
+        _backButton = MakeFooterButton();
+        _backButton.Content = "← Back";
+        _backButton.Margin = new Thickness(0, 0, 12, 0);
+        _backButton.Visibility = Visibility.Collapsed;
+        _backButton.Click += (_, _) => NavigateBack();
+        DockPanel.SetDock(_backButton, Dock.Left);
+        heading.Children.Add(_backButton);
+        heading.Children.Add(_title);
+        header.Children.Add(heading);
         Grid.SetRow(_details, 1);
         header.Children.Add(_details);
+        _shortcutDetails = new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = Brushes.LightGray,
+            MaxHeight = 64, Margin = new Thickness(0, 6, 0, 0), Visibility = Visibility.Collapsed
+        };
+        Grid.SetRow(_shortcutDetails, 2);
+        header.Children.Add(_shortcutDetails);
         root.Children.Add(header);
 
         _body = new Grid { Margin = new Thickness(18, 0, 18, 0), Background = new SolidColorBrush(Color.FromRgb(31, 35, 42)) };
@@ -164,6 +182,12 @@ internal sealed class PreviewWindow : Window
         _body.Children.Clear();
         _jsonView?.Dispose();
         _jsonView = null;
+        _workspaceView?.Dispose();
+        _workspaceView = null;
+        _shellOpenPath = null;
+        _shortcutDetails.Text = "";
+        _shortcutDetails.ToolTip = null;
+        _shortcutDetails.Visibility = Visibility.Collapsed;
         _currentFilePath = null;
         _launchRequest++;
         _openButton.Visibility = Visibility.Collapsed;
@@ -173,6 +197,7 @@ internal sealed class PreviewWindow : Window
 
     internal void ShowSelectionPrompt()
     {
+        ClearNavigation();
         ResetContent();
         _title.Text = "No single item selected";
         _details.Text = "";
@@ -181,6 +206,13 @@ internal sealed class PreviewWindow : Window
 
     public void ShowFile(string path, bool activate = true)
     {
+        ClearNavigation();
+        ShowFileCore(path, activate);
+    }
+
+    private void ShowFileCore(string path, bool activate = true)
+    {
+        _displayedPath = path;
         ResetContent();
 
         // Selection updates must not steal Explorer's arrow keys, move the
@@ -208,11 +240,33 @@ internal sealed class PreviewWindow : Window
             ShowMessage("This item may have been moved, deleted, or become unavailable.");
             return;
         }
-        if (Directory.Exists(path)) { ShowFolder(path); return; }
+        if (info.Extension.Equals(".lnk", StringComparison.OrdinalIgnoreCase))
+        {
+            ShowMessage("Reading shortcut…");
+            _ = LoadPreviewAsync(() => ShortcutPreview.Read(path), ShowShortcut,
+                "Could not read this shortcut.", sta: true);
+            return;
+        }
+        ShowContent(path);
+    }
 
-        var ext = info.Extension.ToLowerInvariant();
+    private void ShowContent(string path)
+    {
+        if (Directory.Exists(path)) { ShowFolder(path); return; }
+        var ext = Path.GetExtension(path).ToLowerInvariant();
         _currentFilePath = path;
         RefreshPreferredApp();
+        if (ext == ".code-workspace")
+        {
+            ShowMessage("Loading workspace…");
+            _ = LoadPreviewAsync(() => WorkspacePreview.Read(path), data =>
+            {
+                _body.Children.Clear();
+                _workspaceView = new WorkspacePreviewView(path, data, (Style)FindResource("PreviewFooterButton"));
+                _body.Children.Add(_workspaceView);
+            }, "Could not read this workspace.");
+            return;
+        }
         if (ext is ".json" or ".jsonc")
         {
             ShowJson(path);
@@ -278,10 +332,11 @@ internal sealed class PreviewWindow : Window
         Stretch = Stretch.Uniform
     };
 
-    private bool CanOpenCurrentFile => _currentFilePath is not null && !_isLaunchingProgram && !IsChoosingProgram;
+    private bool CanOpenCurrentFile => (_currentFilePath is not null || _shellOpenPath is not null) && !_isLaunchingProgram && !IsChoosingProgram;
 
     internal void OpenCurrentFile()
     {
+        if (CanOpenCurrentFile && _shellOpenPath is not null) { OpenShortcut(); return; }
         if (!CanOpenCurrentFile || _currentFilePath is not { } filePath) return;
         var extension = Path.GetExtension(filePath);
         var selection = FileOpener.LoadSelection(extension, _settingsPath);
@@ -465,14 +520,14 @@ internal sealed class PreviewWindow : Window
         }, "Could not read this JSON file. File details are shown above.");
     }
 
-    private async Task LoadPreviewAsync<T>(Func<T> read, Action<T> show, string failureMessage)
+    private async Task LoadPreviewAsync<T>(Func<T> read, Action<T> show, string failureMessage, bool sta = false)
     {
         var current = _request;
         using var cancellation = new CancellationTokenSource();
         _previewLoad = cancellation;
         try
         {
-            var result = await PreviewWork.RunAsync(read, cancellation.Token).ConfigureAwait(false);
+            var result = await PreviewWork.RunAsync(read, cancellation.Token, sta).ConfigureAwait(false);
             if (Dispatcher.HasShutdownStarted)
             {
                 if (result is IDisposable disposable) disposable.Dispose();
@@ -507,41 +562,6 @@ internal sealed class PreviewWindow : Window
         }
     }
 
-    private void ShowFolder(string path)
-    {
-        var panel = new StackPanel { Margin = new Thickness(30), MaxWidth = 760 };
-        AddFolderLabel(panel, "LOCATION");
-        panel.Children.Add(new TextBox
-        {
-            Text = path,
-            IsReadOnly = true,
-            TextWrapping = TextWrapping.Wrap,
-            BorderThickness = new Thickness(0),
-            Padding = new Thickness(0),
-            Background = Brushes.Transparent,
-            Foreground = Brushes.White,
-            FontSize = 17,
-            Margin = new Thickness(0, 7, 0, 28)
-        });
-        AddFolderLabel(panel, "SIZE");
-        var size = AddFolderValue(panel, "Calculating…");
-        AddFolderLabel(panel, "CONTENTS");
-        var contents = AddFolderValue(panel, "Counting files and folders…");
-        var note = new TextBlock
-        {
-            Foreground = new SolidColorBrush(Color.FromRgb(166, 174, 187)),
-            FontSize = 12,
-            TextWrapping = TextWrapping.Wrap
-        };
-        panel.Children.Add(note);
-        _body.Children.Add(new ScrollViewer
-        {
-            Content = panel,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto
-        });
-        LoadFolderDetails(path, size, contents, note, _request);
-    }
-
     private static void AddFolderLabel(System.Windows.Controls.Panel panel, string label) => panel.Children.Add(new TextBlock
     {
         Text = label,
@@ -558,7 +578,7 @@ internal sealed class PreviewWindow : Window
             Foreground = Brushes.White,
             FontSize = 20,
             TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 7, 0, 28)
+            Margin = new Thickness(0, 5, 18, 10)
         };
         panel.Children.Add(text);
         return text;
@@ -719,6 +739,7 @@ internal sealed class PreviewWindow : Window
 
     public new void Hide()
     {
+        ClearNavigation();
         ResetContent();
         base.Hide();
     }

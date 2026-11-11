@@ -33,7 +33,10 @@ The x86 build runs natively on x86 Windows and through Windows compatibility sup
 - `.docx` and `.xlsx` use the installed Windows preview handler when available. A bundled reader shows document text or the first worksheet's first 100 rows and 16 columns when no handler is available.
 - Older `.doc`, `.xls`, and some macro-enabled Office formats require a Windows preview handler, usually supplied by Microsoft Office.
 - Folders show their location, total file size, and counts of files and subfolders. Size is calculated in the background. The scan stops after 100,000 items; linked and inaccessible items are excluded, and partial results are labeled.
+- Folder previews also list up to 20 direct children with file/folder icons, sizes, and modified dates. The bounded sample is sorted with folders first; it does not load thumbnails or enumerate the entire directory to sort it. Click a row to preview that item, then use **Back** to return. **Open folder** opens Explorer and **Copy path** copies the folder location. Selecting a different item in Explorer or closing the preview clears the internal navigation history, which is limited to 32 steps.
 - `.json` and `.jsonc` files show formatted, syntax-colored text and a lazily expandable tree. Invalid JSON shows the line and byte position of the error. Files over 2 MB show a bounded text sample; formatted text is limited to 100,000 characters and tree nodes show up to 500 children at a time.
+- `.code-workspace` files show folder names, resolved paths, local availability, settings/task/debug counts, and recommended extensions. Folder cards offer **Open folder** and **Copy path**. The **JSON** tab loads on demand. JSONC comments and trailing commas are supported; summaries show up to 100 folders and 30 extensions. Network and remote locations are listed without connecting automatically.
+- `.lnk` shortcuts show their saved target, description, arguments, and working directory, with a preview of supported local files or folders. Program shortcuts run only when **Open shortcut** or Ctrl+Enter is used, preserving their saved launch options. Missing, damaged, cyclic, and overly long links show an explanation. Network and Windows Shell targets show metadata and an explicit open action. Previewing never searches for moved targets or rewrites the shortcut.
 - Other files show their name, type, size, modified time, and path.
 
 The bundled Word and Excel reader is a content preview, not a full layout renderer. Exact page formatting, charts, formulas, and every image format would require additional rendering engines and a much larger executable.
@@ -50,6 +53,10 @@ dotnet build .\tests\BetterQuickLook.Tests.csproj -c Release -r win-x86
 ```
 
 Use `--no-ui` when running the tests without an interactive Windows desktop. That skips the Desktop Shell and visible-window checks.
+
+Use `--linked-previews` for the workspace and shortcut tests alone. They cover relative and Unicode paths, JSONC, malformed and oversized workspaces, remote locations, missing folders, native shortcut metadata, released file handles, safe program previews, and rapid selection/close transitions. Chain guards use injected saved metadata because Windows refuses to create shortcut chains; ordinary targets use real Windows shortcuts.
+
+The full suite also tests bounded folder listings, empty and missing folders, hidden and Unicode names, cancellation, nested Back navigation, deleted children, folder shortcuts, narrow layouts, and stale results. It reports the average listing time over 20 reads of a 2,000-item test directory; this measures enumeration, not full window startup.
 
 The selection-following regression tests cover repeated events, duplicate paths, rapid changes, concurrent-query limits, empty selections, close/reopen during a query, Explorer failures, other foreground apps, and the program picker. Visible-window tests also verify focus/position preservation and files deleted between selection and loading.
 

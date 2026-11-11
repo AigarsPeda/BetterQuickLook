@@ -32,6 +32,13 @@ internal static partial class Program
         Directory.CreateDirectory(_folder);
         try
         {
+            if (arguments.Contains("--linked-previews"))
+            {
+                Run("Workspace summaries and edge cases", WorkspaceFiles);
+                Run("Native shortcut targets, chains, metadata and no execution", ShortcutFiles);
+                LinkedPreviewTestSession(arguments.Contains("--render-workspace") ? arguments[^1] : null);
+                return 0;
+            }
             if (arguments.Contains("--desktop-selection-smoke"))
             {
                 Run("Live Desktop selection and multiple selection", DesktopSelectionSmoke);
@@ -44,6 +51,8 @@ internal static partial class Program
             }
             Run("Desktop and Explorer shortcut rules", ShortcutRules);
             Run("Active Explorer tab selection", ActiveExplorerTab);
+            Run("Workspace summaries and edge cases", WorkspaceFiles);
+            Run("Native shortcut targets, chains, metadata and no execution", ShortcutFiles);
             Run("Selection following, coalescing, close/reopen, and stale results", SelectionFollowing);
             Run("PNG and JPEG decode at preview size", Images);
             Run("Corrupt image rejection", CorruptImage);
@@ -59,6 +68,7 @@ internal static partial class Program
             Run("Excel selective shared text, sparse cells, and preview limits", ExcelEdges);
             Run("Missing and malformed document parts", InvalidDocuments);
             Run("JSON formatting, tree, and edge cases", JsonFiles);
+            Run("Bounded folder contents, metadata and cancellation", FolderContentsTests);
             Run("Folder size and scan edge cases", Folders);
             Run("Folder boundaries, cancellation, hidden and Unicode files", () => EdgeCases.Folders(_folder));
             Run("JSON reference formatting, long strings and excessive nesting", () => EdgeCases.JsonFormatting(_folder));
@@ -77,7 +87,17 @@ internal static partial class Program
             Console.Error.WriteLine(error);
             return 1;
         }
-        finally { Directory.Delete(_folder, true); }
+        finally
+        {
+            // Shell/antivirus workers may briefly retain freshly created .lnk
+            // fixtures after the COM reader has released its own handle.
+            var deadline = Environment.TickCount64 + 5000;
+            while (true)
+            {
+                try { Directory.Delete(_folder, true); break; }
+                catch (IOException) when (Environment.TickCount64 < deadline) { Thread.Sleep(100); }
+            }
+        }
     }
 
     private static void Run(string name, Action test)
@@ -547,6 +567,8 @@ internal static partial class Program
             Check(preview.ProgramMenu?.IsOpen == true, "Ctrl+Enter should open the picker when no program is saved");
             preview.ProgramMenu!.IsOpen = false;
             Run("Rapid preview switching and stale Office callbacks", () => PreviewReplacement(preview, path, json, docx, unknown));
+            Run("Workspace and shortcut windows, actions, cancellation and safe command previews", () => LinkedPreviewWindows(preview));
+            Run("Folder navigation, Back, quick actions and stale results", () => FolderNavigationTests(preview));
             if (Environment.GetCommandLineArgs().Contains("--open-with-smoke"))
                 Run("Open once, remember, and Ctrl+Enter launch Paint", () => OpenWithSmoke(preview, settingsPath));
         }

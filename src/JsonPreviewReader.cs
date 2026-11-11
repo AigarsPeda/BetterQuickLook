@@ -40,7 +40,7 @@ internal static class JsonPreviewReader
             bytes.Length >= 4 && bytes[0] == 0 && bytes[1] == 0 && bytes[2] == 0xFE && bytes[3] == 0xFF;
         var raw = wideEncoding ? File.ReadAllText(path) : null;
         var offset = bytes.AsSpan().StartsWith(new byte[] { 0xEF, 0xBB, 0xBF }) ? 3 : 0;
-        var options = Path.GetExtension(path).Equals(".jsonc", StringComparison.OrdinalIgnoreCase)
+        var options = Path.GetExtension(path).ToLowerInvariant() is ".jsonc" or ".code-workspace"
             ? new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true }
             : default;
         try
