@@ -25,21 +25,23 @@ internal static partial class Program
             encoder.Frames.Add(BitmapFrame.Create(bitmap));
             using (var stream = File.Create(fixture)) encoder.Save(stream);
             var results = new List<object>();
-            if (mode == "cold")
-            {
-                var stop = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true };
-                stop.ArgumentList.Add("--exit");
-                using var command = Process.Start(stop)!;
-                if (!command.WaitForExit(15000)) throw new TimeoutException("Exit request did not complete.");
-                var deadline = Stopwatch.StartNew();
-                while (Process.GetProcessesByName("BetterScreenShot").Any(IsRunning))
-                {
-                    if (deadline.Elapsed.TotalSeconds > 10) throw new InvalidOperationException("Editor remained open; aborting cold measurement.");
-                    Thread.Sleep(50);
-                }
-            }
+            var cold = mode.StartsWith("cold", StringComparison.Ordinal);
             for (var i = 0; i < (mode == "cold" ? 1 : 5); i++)
             {
+                if (cold)
+                {
+                    // Signal the resident app directly so stopping it does not
+                    // pre-extract or warm the candidate executable under test.
+                    using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+                    if (EventWaitHandle.TryOpenExisting(@"Local\BetterScreenShot-" + identity.User!.Value + "-Exit", out var signal))
+                        using (signal) signal.Set();
+                    var deadline = Stopwatch.StartNew();
+                    while (Process.GetProcessesByName("BetterScreenShot").Any(IsRunning))
+                    {
+                        if (deadline.Elapsed.TotalSeconds > 10) throw new InvalidOperationException("Editor remained open; aborting cold measurement.");
+                        Thread.Sleep(50);
+                    }
+                }
                 var file = Path.Combine(folder.FullName, "launch-attēls-" + Guid.NewGuid().ToString("N") + ".png");
                 File.Copy(fixture, file);
                 IntPtr window = IntPtr.Zero;
@@ -47,11 +49,22 @@ internal static partial class Program
                 {
                     var timer = Stopwatch.StartNew();
                     var selection = new FileOpener.Selection(null, executable, "BetterScreenShot");
-                    var launch = mode == "direct" ? ProgramLauncher.OpenAsync(selection, file) :
-                        ShellFileHandlers.OpenAsync(".png", executable, "BetterScreenShot", file);
+                    var launch = mode switch
+                    {
+                        "direct" or "cold-direct" => ProgramLauncher.OpenAsync(selection, file),
+                        "cold-process" => Task.Run(() => { using var process = Process.Start(FileOpener.CreateStartInfo(executable, file)); }),
+                        "cold-native" => Task.Run(() =>
+                        {
+                            var start = FileOpener.CreateStartInfo(executable, file);
+                            start.UseShellExecute = false;
+                            using var process = Process.Start(start);
+                        }),
+                        _ => ShellFileHandlers.OpenAsync(".png", executable, "BetterScreenShot", file)
+                    };
                     double? visibleMs = null;
                     double? handoffMs = null;
-                    while (visibleMs is null || handoffMs is null)
+                    double? imageReadyMs = null;
+                    while (visibleMs is null || handoffMs is null || imageReadyMs is null)
                     {
                         if (launch.IsCompleted && handoffMs is null)
                         {
@@ -63,10 +76,19 @@ internal static partial class Program
                             window = FindBenchmarkWindow(Path.GetFileName(file));
                             if (window != IntPtr.Zero) visibleMs = timer.Elapsed.TotalMilliseconds;
                         }
-                        if (timer.Elapsed.TotalSeconds > 20) throw new TimeoutException("Editor did not appear.");
-                        if (visibleMs is null || handoffMs is null) Thread.Sleep(10);
+                        if (window != IntPtr.Zero && imageReadyMs is null)
+                        {
+                            var title = new StringBuilder(512);
+                            GetWindowText(window, title, title.Capacity);
+                            // Loading and error states append a status to the title.
+                            // Only the ready, unmodified document ends in its filename.
+                            if (title.ToString().EndsWith(Path.GetFileName(file), StringComparison.Ordinal))
+                                imageReadyMs = timer.Elapsed.TotalMilliseconds;
+                        }
+                        if (timer.Elapsed.TotalSeconds > 60) throw new TimeoutException("Editor did not appear.");
+                        if (visibleMs is null || handoffMs is null || imageReadyMs is null) Thread.Sleep(10);
                     }
-                    results.Add(new { HandoffMs = handoffMs, VisibleWindowMs = visibleMs });
+                    results.Add(new { HandoffMs = handoffMs, VisibleWindowMs = visibleMs, ImageReadyMs = imageReadyMs });
                 }
                 finally
                 {

@@ -10,6 +10,7 @@ internal sealed class KeyboardHook : IDisposable
     private const int WmKeyUp = 0x101;
     private const int VkSpace = 0x20;
     private const int VkEscape = 0x1B;
+    private const int VkEnter = 0x0D;
     private const int VkControl = 0x11;
     private const int VkAlt = 0x12;
     private const int VkShift = 0x10;
@@ -17,15 +18,18 @@ internal sealed class KeyboardHook : IDisposable
     private const int VkRwin = 0x5C;
     private readonly Func<bool> _previewVisible;
     private readonly Action _toggle;
+    private readonly Action? _open;
     private readonly HookProc _callback;
     private IntPtr _handle;
     private bool _swallowKeyUp;
     private bool _swallowEscapeKeyUp;
+    private bool _swallowEnterKeyUp;
 
-    public KeyboardHook(Func<bool> previewVisible, Action toggle)
+    public KeyboardHook(Func<bool> previewVisible, Action toggle, Action? open = null)
     {
         _previewVisible = previewVisible;
         _toggle = toggle;
+        _open = open;
         _callback = OnKey;
         _handle = SetWindowsHookEx(WhKeyboardLl, _callback, IntPtr.Zero, 0);
         if (_handle == IntPtr.Zero) throw new System.ComponentModel.Win32Exception();
@@ -36,6 +40,18 @@ internal sealed class KeyboardHook : IDisposable
         if (code < 0) return CallNextHookEx(_handle, code, message, data);
         var key = Marshal.ReadInt32(data);
         var msg = message.ToInt32();
+        if (key == VkEnter && _swallowEnterKeyUp && msg is WmKeyDown or WmKeyUp)
+        {
+            if (msg == WmKeyUp) _swallowEnterKeyUp = false;
+            return new IntPtr(1);
+        }
+        if (key == VkEnter && msg == WmKeyDown && _open is not null && _previewVisible() &&
+            Down(VkControl) && !Down(VkAlt) && !Down(VkShift) && !Down(VkLwin) && !Down(VkRwin) && ShellFileListHasFocus())
+        {
+            _swallowEnterKeyUp = true;
+            _open();
+            return new IntPtr(1);
+        }
         if (key == VkEscape && _swallowEscapeKeyUp && msg == WmKeyUp)
         {
             _swallowEscapeKeyUp = false;
@@ -70,20 +86,21 @@ internal sealed class KeyboardHook : IDisposable
 
     private static bool Down(int key) => (GetAsyncKeyState(key) & 0x8000) != 0;
 
-    private static bool ShellFileListHasFocus()
+    private static bool ShellFileListHasFocus() => FocusedShellWindow() != IntPtr.Zero;
+
+    internal static IntPtr FocusedShellWindow()
     {
         var foreground = GetForegroundWindow();
         var name = ClassName(foreground);
-        if (name is "Progman" or "WorkerW") return AcceptsShellSpace(name, "");
-        if (name is not ("CabinetWClass" or "ExploreWClass")) return false;
+        if (name is not ("Progman" or "WorkerW" or "CabinetWClass" or "ExploreWClass")) return IntPtr.Zero;
         var threadId = GetWindowThreadProcessId(foreground, out _);
         var info = new GuiThreadInfo { cbSize = Marshal.SizeOf<GuiThreadInfo>() };
-        if (!GetGUIThreadInfo(threadId, ref info)) return false;
-        return AcceptsShellSpace(name, ClassName(info.hwndFocus));
+        if (!GetGUIThreadInfo(threadId, ref info)) return IntPtr.Zero;
+        return AcceptsShellSpace(name, ClassName(info.hwndFocus)) ? foreground : IntPtr.Zero;
     }
 
     internal static bool AcceptsShellSpace(string foregroundClass, string focusedClass) =>
-        (foregroundClass is "Progman" or "WorkerW") ||
+        (foregroundClass is "Progman" or "WorkerW") && focusedClass != "Edit" ||
         (foregroundClass is "CabinetWClass" or "ExploreWClass") &&
         (focusedClass is "DirectUIHWND" or "SysListView32");
 

@@ -1,0 +1,25 @@
+{
+  "Mode": "cold-shell",
+  "Samples": [
+    {
+      "HandoffMs": 794.6159,
+      "VisibleWindowMs": 1926.5145
+    },
+    {
+      "HandoffMs": 428.3937,
+      "VisibleWindowMs": 1379.8667
+    },
+    {
+      "HandoffMs": 542.1477,
+      "VisibleWindowMs": 1658.4129
+    },
+    {
+      "HandoffMs": 576.1308,
+      "VisibleWindowMs": 1576.8954
+    },
+    {
+      "HandoffMs": 414.2709,
+      "VisibleWindowMs": 1495.1072
+    }
+  ]
+}

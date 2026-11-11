@@ -1,0 +1,25 @@
+{
+  "Mode": "cold-native",
+  "Samples": [
+    {
+      "HandoffMs": 12675.3265,
+      "VisibleWindowMs": 14377.5234
+    },
+    {
+      "HandoffMs": 457.2655,
+      "VisibleWindowMs": 2311.149
+    },
+    {
+      "HandoffMs": 384.8646,
+      "VisibleWindowMs": 1949.328
+    },
+    {
+      "HandoffMs": 387.5215,
+      "VisibleWindowMs": 2032.9987
+    },
+    {
+      "HandoffMs": 436.689,
+      "VisibleWindowMs": 2050.6013
+    }
+  ]
+}

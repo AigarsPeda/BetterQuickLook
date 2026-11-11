@@ -1,0 +1,25 @@
+{
+  "Mode": "direct",
+  "Samples": [
+    {
+      "HandoffMs": 86.7003,
+      "VisibleWindowMs": 387.2545
+    },
+    {
+      "HandoffMs": 13.422,
+      "VisibleWindowMs": 311.0348
+    },
+    {
+      "HandoffMs": 30.2925,
+      "VisibleWindowMs": 281.7639
+    },
+    {
+      "HandoffMs": 17.9406,
+      "VisibleWindowMs": 301.4421
+    },
+    {
+      "HandoffMs": 17.7567,
+      "VisibleWindowMs": 318.0274
+    }
+  ]
+}

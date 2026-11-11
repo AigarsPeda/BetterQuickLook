@@ -1,0 +1,30 @@
+{
+  "Mode": "cold-shell",
+  "Samples": [
+    {
+      "HandoffMs": 10969.3941,
+      "VisibleWindowMs": 11890.4277,
+      "ImageReadyMs": 11890.4328
+    },
+    {
+      "HandoffMs": 393.3551,
+      "VisibleWindowMs": 1331.103,
+      "ImageReadyMs": 1331.1051
+    },
+    {
+      "HandoffMs": 383.539,
+      "VisibleWindowMs": 1318.3866,
+      "ImageReadyMs": 1318.3898
+    },
+    {
+      "HandoffMs": 393.732,
+      "VisibleWindowMs": 1386.5352,
+      "ImageReadyMs": 1386.54
+    },
+    {
+      "HandoffMs": 415.149,
+      "VisibleWindowMs": 1341.763,
+      "ImageReadyMs": 1341.7655
+    }
+  ]
+}

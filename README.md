@@ -2,6 +2,10 @@
 
 BetterQuickLook opens a preview when you select one item on the Desktop or in File Explorer and press Space. Press Space or Escape to close it. The app stays in the notification area; right-click its icon and choose **Exit** to quit.
 
+While the preview is open, click another file or use the arrow keys in Explorer or on the Desktop. The same preview window updates automatically without moving or taking keyboard focus. It follows one selected file or folder; empty and multiple selections clear the content. Click inside the preview to interact with its controls. Ctrl+Enter also works while the Explorer file list retains focus.
+
+Selection tracking listens to Windows events only while the preview is visible. Events are coalesced over 75 ms, one background Shell query runs at a time, and obsolete results cannot replace the latest selection or reopen a closed window. There is no selection polling while the app sits in the tray.
+
 ## Windows installer
 
 Exit any running copy of BetterQuickLook from the notification area, then double-click `dist/BetterQuickLook-Setup.msi` and choose **Install**. Setup installs for your Windows account and registers BetterQuickLook to start quietly in the notification area whenever you sign in. Open BetterQuickLook from the Start menu to use it immediately after setup. You can disable automatic startup in **Settings → Apps → Startup**. To remove it, use **Settings → Apps → Installed apps**; uninstall also removes its startup registration. Portable copies do not register themselves for startup.
@@ -46,3 +50,12 @@ dotnet build .\tests\BetterQuickLook.Tests.csproj -c Release -r win-x86
 ```
 
 Use `--no-ui` when running the tests without an interactive Windows desktop. That skips the Desktop Shell and visible-window checks.
+
+The selection-following regression tests cover repeated events, duplicate paths, rapid changes, concurrent-query limits, empty selections, close/reopen during a query, Explorer failures, other foreground apps, and the program picker. Visible-window tests also verify focus/position preservation and files deleted between selection and loading.
+
+For live Shell integration checks, run each command separately on an interactive desktop. The first opens and closes its own temporary Explorer window, exercises selection events, Down-arrow navigation, and Ctrl+Enter. The second briefly shows the Desktop, creates and removes two temporary fixtures, tests single/multiple selection, and restores the previous Desktop selection.
+
+```powershell
+.\tests\bin\Release\net9.0-windows\win-x86\BetterQuickLook.Tests.exe --selection-smoke
+.\tests\bin\Release\net9.0-windows\win-x86\BetterQuickLook.Tests.exe --desktop-selection-smoke
+```

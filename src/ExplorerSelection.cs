@@ -6,9 +6,24 @@ namespace BetterQuickLook;
 
 internal static class ExplorerSelection
 {
-    public static string? GetSelectedFile()
+    internal static Task<string?> ReadSelectedFileAsync(IntPtr window)
     {
-        var foreground = GetForegroundWindow();
+        var completion = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            try { completion.SetResult(GetSelectedFile(window)); }
+            catch (Exception error) { completion.SetException(error); }
+        }) { IsBackground = true, Name = "BetterQuickLook selection" };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        return completion.Task;
+    }
+
+    public static string? GetSelectedFile() => GetSelectedFile(GetForegroundWindow());
+
+    internal static string? GetSelectedFile(IntPtr foreground)
+    {
+        if (foreground == IntPtr.Zero) return null;
         var isDesktop = ClassName(foreground) is "Progman" or "WorkerW";
         var title = WindowTitle(foreground);
         var shellType = Type.GetTypeFromProgID("Shell.Application");

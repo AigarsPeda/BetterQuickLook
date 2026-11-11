@@ -32,8 +32,19 @@ internal static partial class Program
         Directory.CreateDirectory(_folder);
         try
         {
+            if (arguments.Contains("--desktop-selection-smoke"))
+            {
+                Run("Live Desktop selection and multiple selection", DesktopSelectionSmoke);
+                return 0;
+            }
+            if (arguments.Contains("--selection-smoke"))
+            {
+                Run("Live Explorer selection and arrow navigation", ShellSelectionSmoke);
+                return 0;
+            }
             Run("Desktop and Explorer shortcut rules", ShortcutRules);
             Run("Active Explorer tab selection", ActiveExplorerTab);
+            Run("Selection following, coalescing, close/reopen, and stale results", SelectionFollowing);
             Run("PNG and JPEG decode at preview size", Images);
             Run("Corrupt image rejection", CorruptImage);
             Run("Preview work cancellation, concurrency, and resource disposal", PreviewWorkLimits);
@@ -83,6 +94,7 @@ internal static partial class Program
         Check(KeyboardHook.AcceptsShellSpace("CabinetWClass", "DirectUIHWND"), "Explorer list should accept Space");
         Check(KeyboardHook.AcceptsShellSpace("ExploreWClass", "SysListView32"), "Classic Explorer list should accept Space");
         Check(!KeyboardHook.AcceptsShellSpace("CabinetWClass", "Edit"), "Explorer text entry must keep Space");
+        Check(!KeyboardHook.AcceptsShellSpace("WorkerW", "Edit"), "Desktop rename must keep Space");
         Check(!KeyboardHook.AcceptsShellSpace("Chrome_WidgetWin_1", "DirectUIHWND"), "Other apps must keep Space");
     }
 
@@ -459,6 +471,17 @@ internal static partial class Program
             other.Activate();
             PumpDispatcher(TimeSpan.FromMilliseconds(300));
             Check(preview.IsVisible, "preview should not disappear when focus changes");
+            var originalLeft = preview.Left;
+            var originalTop = preview.Top;
+            preview.ShowFile(path, activate: false);
+            Check(other.IsActive && preview.Left == originalLeft && preview.Top == originalTop,
+                "selection refresh preserves the other window's focus and preview position");
+            preview.ShowSelectionPrompt();
+            Check(!preview.CanOpenFile && ContainsText(preview, "Select one file or folder"),
+                "multiple or empty selection clears old content and disables file actions");
+            preview.ShowFile(Path.Combine(_folder, "already-deleted.png"), activate: false);
+            Check(!preview.CanOpenFile && ContainsText(preview, "File unavailable"),
+                "an item deleted between selection and preview must not crash or retain file actions");
             preview.Hide();
             Check(!preview.IsVisible, "preview should close on request");
             preview.ShowFile(path);

@@ -136,3 +136,69 @@ To repeat the launch measurement with BetterScreenShot installed:
 dotnet build .\tests\BetterQuickLook.Tests.csproj -c Release
 .\tests\bin\Release\net9.0-windows\BetterQuickLook.Tests.exe --launch-benchmark "$env:LOCALAPPDATA\Programs\BetterScreenShot\BetterScreenShot.exe" direct .\benchmarks\launch-repeat.json
 ```
+
+## Cold-start follow-up — BetterScreenShot 1.2.12
+
+The installed editor now defers loading its 37.5 MB OCR payload until recognition is requested. Capture overlay preparation, initial update checks, and tray initialization for image launches run at idle. BetterQuickLook's production launch code is unchanged.
+
+The same Shell launch path and synthetic 4K PNG produced a cold-start median of **1,915 ms before and 1,577 ms after**, approximately **18% faster**, with five fresh processes per version. Ranges were 1,702–2,154 ms and 1,380–1,927 ms. Reports: `cold-repeat-before.json` and `cold-installed-after.json`. The final warm-opening check (`cold-update-warm-check.json`) had a 311 ms median. These are process-cold tests with existing Windows caches, not reboot or cleared-cache tests. Window visibility is polled at 10 ms intervals and is not a full rendering-completion measurement.
+
+The earlier 2,110 ms result was one observation. Multiple samples show variation, so it is not used as the new comparison baseline. Initial runs of both existing and newly built executables occasionally took 14–31 seconds; no claim is made that this external launch variability is eliminated.
+
+Experiments retained as raw JSON:
+
+- `cold-process-before.json` and `cold-native-before.json`: direct process creation did not show a reliable enough gain to change QuickLook's launch routing.
+- `cold-extracted-experiment.json`: extracting all assemblies improved cached starts but had an expensive initial execution and additional cache requirements. Not retained.
+- `cold-idle-experiment.json` and `cold-idle-repeat.json`: deferred capture/update setup alone, with first-execution variability retained.
+- `cold-uncompressed-experiment.json`: a 201 MB uncompressed EXE offered no convincing overall advantage. Not retained.
+- `cold-lazy-ocr-first.json`, `cold-final-baseline.json`, and `cold-final-candidate.json`: the on-demand OCR payload experiment before the final tray scheduling adjustment.
+
+The final app stays one compressed self-contained EXE, approximately the same download size. No preloaded background editor process or polling was added. New startup lifecycle tests pass in ordinary and bundled test builds, and bundled OCR recognizes the synthetic fixture. The editor's 194-check suite had one transient settings-file rename access failure; its targeted 11-check image-quality rerun passed. Other checks, including OCR and capture, passed.
+
+`cold-shell` now repeats five graceful exit-and-launch cycles. `cold-direct` tests the current QuickLook launch method; `cold-process` and `cold-native` are diagnostic process-launch alternatives. Stopping uses the existing per-user exit event rather than executing the candidate before timing, so the benchmark no longer primes a candidate's extraction cache while requesting shutdown. It refuses to continue if the editor remains open, for example because of unsaved work. Only synthetic benchmark windows are closed.
+
+```powershell
+.\tests\bin\Release\net9.0-windows\BetterQuickLook.Tests.exe --launch-benchmark "$env:LOCALAPPDATA\Programs\BetterScreenShot\BetterScreenShot.exe" cold-shell .\benchmarks\cold-repeat.json
+```
+
+## Window feedback versus image readiness — BetterScreenShot 1.2.13
+
+The editor now opens a themed loading state while image decoding runs in parallel with UI construction/rendering. The benchmark records `VisibleWindowMs` separately from `ImageReadyMs`. A ready, unmodified document title ends with its filename; loading/error titles append a status. Image readiness therefore means decoded pixels were assigned and editing enabled, not that the compositor finished drawing them. Both events are polled at approximately 10 ms intervals.
+
+| Median of five launches | Installed 1.2.12 | Installed 1.2.13 |
+| --- | ---: | ---: |
+| Cold window visible | 1,342 ms | 1,213 ms |
+| Cold image ready | 1,342 ms | 1,282 ms |
+| Warm window visible | 224 ms | 145 ms |
+| Warm image ready | 224 ms | 251 ms |
+
+Raw files: `async-window-before-cold.json`, `async-window-after-cold.json`, `async-window-before-warm.json`, and `async-window-after-warm.json`. Cold comparisons use the same installed Shell-handler launch path; warm comparisons use the existing direct pipe. These are process-cold launches with existing Windows caches. The baseline's first cold sample took 11.9 seconds and is retained. The improvement is earlier, responsive feedback; warm full readiness increased 26 ms in this run, so there is no claim of universally faster processing.
+
+One decoder at a time bounds temporary memory and CPU demand, while the WPF UI thread remains available. Closing cancels queued work; in-flight native decoding completes without updating a closed window. Original files remain intact. The full 194-check editor suite and six targeted loading checks passed; image-open and startup checks also passed after the final parallel-start adjustment. BetterScreenShot 1.2.13 is installed, while BetterQuickLook's production code remains unchanged.
+
+## Startup research and ReadyToRun experiment, 2026-11-11
+
+This was source inspection of other applications, not a speed comparison against their executables. No third-party implementation code was copied.
+
+| Primary source | Technique observed | Application to our projects |
+| --- | --- | --- |
+| [qView image core](https://github.com/jurplel/qView/blob/main/src/qvimagecore.cpp) | Worker-thread image reads, optional nearby-file preloading, cache cost based on decoded pixel memory. | The editor now decodes off the UI thread. Directory preloading is deferred because it adds memory and disk work without helping the first isolated file open. |
+| [JPEGView image provider](https://github.com/sylikc/jpegview/blob/master/src/JPEGView/JPEGProvider.cpp) | Worker requests, directional read-ahead, reuse of existing requests, and eviction of unused images. | Useful for future next/previous image navigation. Current requested-file decoding is bounded and canceled when no longer needed. Adding a folder cache would work against the low-idle-memory requirement without a demonstrated benefit. |
+| [QuickLook image plugin](https://github.com/QL-Win/QuickLook/blob/master/QuickLook.Plugin/QuickLook.Plugin.ImageViewer/Plugin.cs) | Configurable native image providers and color conversion tradeoffs. | Preserve editor image quality. BetterQuickLook already limits large preview dimensions to 1,800 pixels; BetterScreenShot still loads full resolution for editing. Color handling was not weakened for a timing win. |
+| [Microsoft WPF startup guidance](https://learn.microsoft.com/en-us/dotnet/desktop/wpf/advanced/application-startup-time) | Reduce startup dependencies and defer initialization; cold disk pages explain some first-versus-repeat launch differences. | OCR resources are already loaded on demand, and capture warmup, initial updates, and image-launch tray setup run at idle. The same editor window provides loading feedback. |
+| [Microsoft ReadyToRun guidance](https://learn.microsoft.com/en-us/dotnet/core/deploying/ready-to-run) | Precompile managed code to reduce JIT work, at the cost of larger assemblies and potentially more loading/memory work. | Tested below and not enabled in the release. |
+
+ReadyToRun was built from the same 1.2.13 source with `PublishReadyToRun=true`, keeping self-contained win-x64 publishing, a single compressed EXE, native-library extraction, and embedded debug information. The current installed build was compared with the candidate by the benchmark's `cold-process` mode, which uses the exact executable path. This avoids Shell associations redirecting the experimental path to the installed program. It therefore measures a direct process-launch diagnostic, not the production Shell-handler route used in the earlier table.
+
+Two five-launch blocks per version were run in the order baseline, candidate, candidate, baseline. Each launch used a fresh app process and the same synthetic opaque 4K PNG. Windows caches remained populated; this was not reboot-cold testing. Files lived at different paths. The large first candidate delay and all other samples are included rather than discarded. These results establish no benefit on this computer, not a universal ReadyToRun regression.
+
+| Metric | Current 1.2.13 | ReadyToRun experiment |
+| --- | ---: | ---: |
+| Median window visible, ten launches | 1,265 ms | 1,603 ms |
+| Median decoded image assigned and editing enabled | 1,300 ms | 1,744 ms |
+| Window-visible range | 1,085 to 1,515 ms | 1,372 to 28,428 ms |
+| Executable bytes | 90,056,723 | 102,153,589 |
+
+The second blocks alone also favored the current build: 1,288 ms versus 1,547 ms median window visibility. ReadyToRun was not retained, and the installed 1.2.13 executable was not replaced. No production source changes were needed for this experiment. The benchmark finished with the installed app running again. Raw reports are `research-r2r-baseline.json`, `research-r2r-candidate.json`, `research-r2r-candidate-repeat.json`, and `research-r2r-baseline-repeat.json`.
+
+The next useful diagnostic for unexplained multi-second first executions is a startup trace separating process creation, runtime loading/JIT, UI construction, file reads, and decoding. Saturating all cores or retaining full-resolution image caches cannot remove serial waits and would spend resources without a measured benefit. No antivirus exclusion, CPU-priority change, artificial delay, or always-running helper was added.

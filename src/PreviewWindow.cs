@@ -1,7 +1,6 @@
 using System.IO;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
-using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -155,7 +154,7 @@ internal sealed class PreviewWindow : Window
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
-    public void ShowFile(string path)
+    private void ResetContent()
     {
         if (ProgramMenu is { } menu) menu.IsOpen = false;
         _request++;
@@ -170,18 +169,45 @@ internal sealed class PreviewWindow : Window
         _openButton.Visibility = Visibility.Collapsed;
         _changeProgramButton.Visibility = Visibility.Collapsed;
         SetProgramLaunching(false);
+    }
+
+    internal void ShowSelectionPrompt()
+    {
+        ResetContent();
+        _title.Text = "No single item selected";
+        _details.Text = "";
+        ShowMessage("Select one file or folder on the Desktop or in File Explorer.");
+    }
+
+    public void ShowFile(string path, bool activate = true)
+    {
+        ResetContent();
+
+        // Selection updates must not steal Explorer's arrow keys, move the
+        // window, or restore a preview the user has minimized.
+        if (!IsVisible)
+        {
+            ShowActivated = activate;
+            WindowState = WindowState.Normal;
+            Show();
+            Topmost = true;
+        }
+        if (activate) Activate();
 
         var info = new FileInfo(path);
         _title.Text = info.Name;
-        _details.Text = Directory.Exists(path)
-            ? $"Folder  •  Modified {Directory.GetLastWriteTime(path):g}"
-            : $"{DescribeType(info.Extension)}  •  {FormatSize(info.Length)}  •  Modified {info.LastWriteTime:g}";
-
-        WindowState = WindowState.Normal;
-        Show();
-        Topmost = false;
-        Topmost = true;
-        Activate();
+        try
+        {
+            _details.Text = Directory.Exists(path)
+                ? $"Folder  •  Modified {Directory.GetLastWriteTime(path):g}"
+                : $"{DescribeType(info.Extension)}  •  {FormatSize(info.Length)}  •  Modified {info.LastWriteTime:g}";
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            _details.Text = "File unavailable";
+            ShowMessage("This item may have been moved, deleted, or become unavailable.");
+            return;
+        }
         if (Directory.Exists(path)) { ShowFolder(path); return; }
 
         var ext = info.Extension.ToLowerInvariant();
@@ -254,7 +280,7 @@ internal sealed class PreviewWindow : Window
 
     private bool CanOpenCurrentFile => _currentFilePath is not null && !_isLaunchingProgram && !IsChoosingProgram;
 
-    private void OpenCurrentFile()
+    internal void OpenCurrentFile()
     {
         if (!CanOpenCurrentFile || _currentFilePath is not { } filePath) return;
         var extension = Path.GetExtension(filePath);
@@ -693,19 +719,7 @@ internal sealed class PreviewWindow : Window
 
     public new void Hide()
     {
-        if (ProgramMenu is { } menu) menu.IsOpen = false;
-        _request++;
-        _previewLoad?.Cancel();
-        _launchRequest++;
-        _currentFilePath = null;
-        _openButton.Visibility = Visibility.Collapsed;
-        _changeProgramButton.Visibility = Visibility.Collapsed;
-        SetProgramLaunching(false);
-        CancelFolderScan();
-        DisposeNativePreview();
-        _body.Children.Clear();
-        _jsonView?.Dispose();
-        _jsonView = null;
+        ResetContent();
         base.Hide();
     }
 

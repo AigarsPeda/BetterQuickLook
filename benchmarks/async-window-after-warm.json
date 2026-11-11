@@ -1,0 +1,30 @@
+{
+  "Mode": "direct",
+  "Samples": [
+    {
+      "HandoffMs": 43.7793,
+      "VisibleWindowMs": 129.4012,
+      "ImageReadyMs": 207.1954
+    },
+    {
+      "HandoffMs": 38.0284,
+      "VisibleWindowMs": 162.3076,
+      "ImageReadyMs": 274.894
+    },
+    {
+      "HandoffMs": 26.1623,
+      "VisibleWindowMs": 123.9219,
+      "ImageReadyMs": 247.6414
+    },
+    {
+      "HandoffMs": 34.7509,
+      "VisibleWindowMs": 145.0792,
+      "ImageReadyMs": 269.2824
+    },
+    {
+      "HandoffMs": 35.5812,
+      "VisibleWindowMs": 145.8044,
+      "ImageReadyMs": 250.8052
+    }
+  ]
+}

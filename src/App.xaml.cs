@@ -11,6 +11,8 @@ public partial class App : System.Windows.Application
     private WinForms.NotifyIcon? _tray;
     private KeyboardHook? _hook;
     private PreviewWindow? _preview;
+    private SelectionFollower? _selectionFollower;
+    private ShellSelectionEvents? _selectionEvents;
     private bool _opening;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -36,7 +38,8 @@ public partial class App : System.Windows.Application
             "BetterQuickLook");
 
         _hook = new KeyboardHook(() => _preview?.IsVisible == true && !_preview.IsChoosingProgram && !_preview.IsProgramButtonFocused,
-            () => Dispatcher.BeginInvoke(TogglePreview));
+            () => Dispatcher.BeginInvoke(TogglePreview),
+            () => Dispatcher.BeginInvoke(() => _preview?.OpenCurrentFile()));
     }
 
     private void TogglePreview()
@@ -53,8 +56,28 @@ public partial class App : System.Windows.Application
         {
             var path = ExplorerSelection.GetSelectedFile();
             if (path is null) return;
-            _preview ??= new PreviewWindow();
-            _preview.ShowFile(path);
+            if (_preview is null)
+            {
+                _preview = new PreviewWindow();
+                _selectionFollower = new SelectionFollower(KeyboardHook.FocusedShellWindow,
+                    ExplorerSelection.ReadSelectedFileAsync,
+                    () => _preview.IsVisible && !_preview.IsChoosingProgram,
+                    selected =>
+                    {
+                        if (selected is null) _preview.ShowSelectionPrompt();
+                        else _preview.ShowFile(selected, activate: false);
+                    });
+                _preview.IsVisibleChanged += (_, _) =>
+                {
+                    if (_preview.IsVisible) return;
+                    _selectionEvents?.Dispose();
+                    _selectionEvents = null;
+                    _selectionFollower.Stop();
+                };
+            }
+            _preview.ShowFile(path, activate: false);
+            _selectionEvents ??= new ShellSelectionEvents(_selectionFollower!.RequestRefresh);
+            _selectionFollower!.Start(path);
         }
         finally { _opening = false; }
     }
@@ -62,6 +85,8 @@ public partial class App : System.Windows.Application
     protected override void OnExit(ExitEventArgs e)
     {
         _hook?.Dispose();
+        _selectionEvents?.Dispose();
+        _selectionFollower?.Dispose();
         _preview?.ClosePermanently();
         if (_ownsMutex) _singleInstance?.ReleaseMutex();
         _singleInstance?.Dispose();
