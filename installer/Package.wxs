@@ -2,7 +2,10 @@
   <Package Name="BetterQuickLook" Manufacturer="A. Peda" Version="$(var.AppVersion)" Scope="perUser"
            UpgradeCode="D370586A-F127-438D-BBD5-8F16CE73667C">
     <!-- Rebuilding a test package at the same version should replace the previous build. -->
-    <MajorUpgrade AllowSameVersionUpgrades="yes" DowngradeErrorMessage="A newer version of BetterQuickLook is already installed." />
+    <!-- Keep removal inside the transaction so a failed update can restore the
+         previous application and its startup registration. -->
+    <MajorUpgrade AllowSameVersionUpgrades="yes" Schedule="afterInstallInitialize"
+                  DowngradeErrorMessage="A newer version of BetterQuickLook is already installed." />
     <MediaTemplate EmbedCab="yes" />
     <Property Id="ARPNOMODIFY" Value="1" />
     <Property Id="DefaultUIFont" Value="SetupFont" />
@@ -17,6 +20,8 @@
                       Target="[#ApplicationExe]" WorkingDirectory="InstallFolder" />
             <RegistryValue Root="HKCU" Key="Software\BetterQuickLook\Installer" Name="Installed"
                            Type="integer" Value="1" KeyPath="yes" />
+            <!-- Installed and rewritten on every upgrade. Do not alter Windows'
+                 StartupApproved setting: an enabled entry must remain enabled. -->
             <RegistryValue Root="HKCU" Key="Software\Microsoft\Windows\CurrentVersion\Run"
                            Name="BetterQuickLook" Type="string" Value="&quot;[#ApplicationExe]&quot;" />
             <RemoveFolder Id="RemoveInstallFolder" On="uninstall" />

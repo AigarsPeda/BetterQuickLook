@@ -24,3 +24,18 @@ jobs:
         with:
           name: BetterQuickLook-win-x86
           path: dist/BetterQuickLook.exe
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '6.0.x' # WiX 4 build tools
+      - name: Check installer startup across upgrades
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path .\installer\obj\payload -Force | Out-Null
+          Copy-Item .\dist\BetterQuickLook.exe .\installer\obj\payload\BetterQuickLook.exe
+          $first = Join-Path $env:RUNNER_TEMP 'BetterQuickLook-installer-before'
+          $next = Join-Path $env:RUNNER_TEMP 'BetterQuickLook-installer-after'
+          dotnet build .\installer\BetterQuickLook.Setup.wixproj -c Release -p:AppVersion=1.0.0 -o $first
+          if ($LASTEXITCODE -ne 0) { throw 'First installer build failed.' }
+          dotnet build .\installer\BetterQuickLook.Setup.wixproj -c Release -p:AppVersion=1.0.1 -o $next
+          if ($LASTEXITCODE -ne 0) { throw 'Upgrade installer build failed.' }
+          .\tests\Test-Installer.ps1 -MsiPath (Join-Path $first 'BetterQuickLook-Setup.msi') -UpgradeMsiPath (Join-Path $next 'BetterQuickLook-Setup.msi')

@@ -1,10 +1,12 @@
 param(
     [Parameter(Mandatory)][string]$MsiPath,
+    [string]$UpgradeMsiPath,
     [switch]$LeaveInstalled
 )
 
 $ErrorActionPreference = 'Stop'
 $MsiPath = (Resolve-Path -LiteralPath $MsiPath).Path
+if ($UpgradeMsiPath) { $UpgradeMsiPath = (Resolve-Path -LiteralPath $UpgradeMsiPath).Path }
 $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $markerKey = 'HKCU:\Software\BetterQuickLook\Installer'
 $installedExe = Join-Path $env:LOCALAPPDATA 'Programs\BetterQuickLook\BetterQuickLook.exe'
@@ -34,6 +36,11 @@ Write-Output 'PASS install registers the quoted installed executable for current
 Invoke-Setup '/fa'
 Assert-Startup
 Write-Output 'PASS repair preserves startup registration'
+if ($UpgradeMsiPath) {
+    & (Join-Path $PSScriptRoot 'Test-StartupUpgrade.ps1') -MsiPath $UpgradeMsiPath
+    $MsiPath = $UpgradeMsiPath
+    Assert-Startup
+}
 Invoke-Setup '/x'
 if ((Get-ItemProperty $runKey -ErrorAction SilentlyContinue).BetterQuickLook) { throw 'Uninstall left startup registration behind.' }
 if (Test-Path -LiteralPath $installedExe) { throw 'Uninstall left the executable behind.' }

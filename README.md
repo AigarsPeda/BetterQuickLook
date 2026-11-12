@@ -12,6 +12,10 @@ Exit any running copy of BetterQuickLook from the notification area, then double
 
 To build the installer, run `./installer/Build.ps1` with the .NET 9 SDK and .NET 6 Runtime installed. The build restores the WiX SDK through NuGet and packages a fresh copy of the app.
 
+Updates keep the installed executable registered for sign-in startup. The installer leaves Windows' enabled/disabled startup preference intact. Removal of the old version happens inside the upgrade transaction so Windows Installer can restore it if the update fails. GitHub checks install, repair, upgrade, and uninstall using two test packages on a clean runner.
+
+To verify an update on an existing installation with startup enabled, run `./tests/Test-StartupUpgrade.ps1 -MsiPath <new-msi>`. It installs the update, checks the startup command and unchanged Windows startup approval, and restarts the app if it was running. It does not repair startup values to make the check pass. The clean-account lifecycle test accepts `-UpgradeMsiPath <new-msi>` in addition to `-MsiPath <old-msi>`.
+
 ## Single-file build
 
 The published `BetterQuickLook.exe` is portable. Copy that one file to a Windows 10 or 11 PC and run it. No .NET installation is needed. The first launch of a build may take several seconds while .NET extracts its bundled runtime and assemblies into a per-user cache. Later launches reuse that cache. Loading assemblies from the cache reduces tray memory usage; it uses more cache space on disk. .NET recreates the cache if temporary files are cleaned up.
