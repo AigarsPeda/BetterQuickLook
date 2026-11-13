@@ -10,8 +10,19 @@ if ($UpgradeMsiPath) { $UpgradeMsiPath = (Resolve-Path -LiteralPath $UpgradeMsiP
 $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $markerKey = 'HKCU:\Software\BetterQuickLook\Installer'
 $installedExe = Join-Path $env:LOCALAPPDATA 'Programs\BetterQuickLook\BetterQuickLook.exe'
-$existing = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' |
-    Where-Object DisplayName -eq 'BetterQuickLook'
+# A clean account may have no Uninstall key. Also check the registry views where
+# Windows Installer can register the x86 package on a 64-bit machine.
+$uninstallKeys = @(
+    'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+    'HKCU:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
+    'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+    'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+)
+$existing = foreach ($key in $uninstallKeys) {
+    if (Test-Path -LiteralPath $key) {
+        Get-ItemProperty (Join-Path $key '*') | Where-Object DisplayName -eq 'BetterQuickLook'
+    }
+}
 if ($existing -or (Test-Path -LiteralPath $installedExe) -or
     (Get-ItemProperty $runKey -ErrorAction SilentlyContinue).BetterQuickLook) {
     throw 'Use a clean test account. This test will not replace an existing installation or startup entry.'

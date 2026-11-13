@@ -36,6 +36,7 @@ jobs:
           $next = Join-Path $env:RUNNER_TEMP 'BetterQuickLook-installer-after'
           dotnet build .\installer\BetterQuickLook.Setup.wixproj -c Release -p:AppVersion=1.0.0 -o $first
           if ($LASTEXITCODE -ne 0) { throw 'First installer build failed.' }
-          dotnet build .\installer\BetterQuickLook.Setup.wixproj -c Release -p:AppVersion=1.0.1 -o $next
+          # Changing AppVersion alone can reuse WiX's intermediate MSI.
+          dotnet build .\installer\BetterQuickLook.Setup.wixproj -c Release --no-incremental -p:AppVersion=1.0.1 -o $next
           if ($LASTEXITCODE -ne 0) { throw 'Upgrade installer build failed.' }
           .\tests\Test-Installer.ps1 -MsiPath (Join-Path $first 'BetterQuickLook-Setup.msi') -UpgradeMsiPath (Join-Path $next 'BetterQuickLook-Setup.msi')
