@@ -7,6 +7,9 @@
     <MajorUpgrade AllowSameVersionUpgrades="yes" Schedule="afterInstallInitialize"
                   DowngradeErrorMessage="A newer version of BetterQuickLook is already installed." />
     <MediaTemplate EmbedCab="yes" />
+    <Icon Id="BetterQuickLook.ico" SourceFile="$(var.AppIcon)" />
+    <Binary Id="SetupIcon" SourceFile="$(var.AppIcon)" />
+    <Property Id="ARPPRODUCTICON" Value="BetterQuickLook.ico" />
     <Property Id="ARPNOMODIFY" Value="1" />
     <Property Id="DefaultUIFont" Value="SetupFont" />
     <Property Id="ErrorDialog" Value="SetupError" />
@@ -17,7 +20,7 @@
           <Component Id="Application" Guid="B3B26866-FEC8-4D19-AAB4-EFF147A3882F">
             <File Id="ApplicationExe" Source="$(var.AppExe)" />
             <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="BetterQuickLook"
-                      Target="[#ApplicationExe]" WorkingDirectory="InstallFolder" />
+                      Target="[#ApplicationExe]" WorkingDirectory="InstallFolder" Icon="BetterQuickLook.ico" />
             <RegistryValue Root="HKCU" Key="Software\BetterQuickLook\Installer" Name="Installed"
                            Type="integer" Value="1" KeyPath="yes" />
             <!-- Installed and rewritten on every upgrade. Do not alter Windows'
@@ -39,7 +42,8 @@
       <TextStyle Id="SetupFont" FaceName="Segoe UI" Size="9" />
       <TextStyle Id="SetupHeading" FaceName="Segoe UI" Size="14" Bold="yes" />
       <Dialog Id="Welcome" Width="320" Height="132" Title="BetterQuickLook Setup" NoMinimize="yes">
-        <Control Id="Heading" Type="Text" X="16" Y="14" Width="288" Height="20" Text="{\SetupHeading}Install BetterQuickLook" />
+        <Control Id="Heading" Type="Text" X="56" Y="14" Width="248" Height="20" Text="{\SetupHeading}Install BetterQuickLook" />
+        <Control Id="Logo" Type="Icon" X="16" Y="8" Width="30" Height="29" IconSize="32" FixedSize="yes" Text="SetupIcon" />
         <Control Id="Description" Type="Text" X="16" Y="44" Width="288" Height="42"
                  Text="Setup installs BetterQuickLook for your account and starts it automatically when you sign in. Exit any running copy from the notification area before continuing." />
         <Control Id="Install" Type="PushButton" X="188" Y="104" Width="56" Height="17" Text="Install" Default="yes">
@@ -50,21 +54,24 @@
         </Control>
       </Dialog>
       <Dialog Id="Progress" Width="320" Height="104" Title="BetterQuickLook Setup" NoMinimize="yes" Modeless="yes">
-        <Control Id="Heading" Type="Text" X="16" Y="14" Width="288" Height="20"
+        <Control Id="Heading" Type="Text" X="56" Y="14" Width="248" Height="20"
                  Text="{\SetupHeading}Working on BetterQuickLook" TabSkip="no" />
+        <Control Id="Logo" Type="Icon" X="16" Y="8" Width="30" Height="29" IconSize="32" FixedSize="yes" Text="SetupIcon" />
         <Control Id="Description" Type="Text" X="16" Y="44" Width="288" Height="14" Text="Please wait while Windows finishes setup." />
         <Control Id="ProgressBar" Type="ProgressBar" X="16" Y="69" Width="288" Height="12" Text="Setup progress">
           <Subscribe Event="SetProgress" Attribute="Progress" />
         </Control>
       </Dialog>
       <Dialog Id="Finished" Width="320" Height="110" Title="BetterQuickLook Setup" NoMinimize="yes">
-        <Control Id="Heading" Type="Text" X="16" Y="14" Width="288" Height="20" Text="{\SetupHeading}Setup complete" />
+        <Control Id="Heading" Type="Text" X="56" Y="14" Width="248" Height="20" Text="{\SetupHeading}Setup complete" />
+        <Control Id="Logo" Type="Icon" X="16" Y="8" Width="30" Height="29" IconSize="32" FixedSize="yes" Text="SetupIcon" />
         <Control Id="Close" Type="PushButton" X="248" Y="82" Width="56" Height="17" Text="Close" Default="yes" Cancel="yes">
           <Publish Event="EndDialog" Value="Return" />
         </Control>
       </Dialog>
       <Dialog Id="Failed" Width="320" Height="110" Title="BetterQuickLook Setup" NoMinimize="yes">
-        <Control Id="Heading" Type="Text" X="16" Y="14" Width="288" Height="20" Text="{\SetupHeading}Setup could not finish" />
+        <Control Id="Heading" Type="Text" X="56" Y="14" Width="248" Height="20" Text="{\SetupHeading}Setup could not finish" />
+        <Control Id="Logo" Type="Icon" X="16" Y="8" Width="30" Height="29" IconSize="32" FixedSize="yes" Text="SetupIcon" />
         <Control Id="Description" Type="Text" X="16" Y="44" Width="288" Height="28"
                  Text="Exit any running copy of BetterQuickLook from the notification area before trying again." />
         <Control Id="Close" Type="PushButton" X="248" Y="82" Width="56" Height="17" Text="Close" Default="yes" Cancel="yes">
@@ -72,14 +79,16 @@
         </Control>
       </Dialog>
       <Dialog Id="Cancelled" Width="320" Height="110" Title="BetterQuickLook Setup" NoMinimize="yes">
-        <Control Id="Heading" Type="Text" X="16" Y="14" Width="288" Height="20" Text="{\SetupHeading}Setup cancelled" />
+        <Control Id="Heading" Type="Text" X="56" Y="14" Width="248" Height="20" Text="{\SetupHeading}Setup cancelled" />
+        <Control Id="Logo" Type="Icon" X="16" Y="8" Width="30" Height="29" IconSize="32" FixedSize="yes" Text="SetupIcon" />
         <Control Id="Close" Type="PushButton" X="248" Y="82" Width="56" Height="17" Text="Close" Default="yes" Cancel="yes">
           <Publish Event="EndDialog" Value="Exit" />
         </Control>
       </Dialog>
       <Dialog Id="FilesInUse" Width="320" Height="160" Title="BetterQuickLook Setup" KeepModeless="yes">
-        <Control Id="Description" Type="Text" X="16" Y="14" Width="288" Height="30"
+        <Control Id="Description" Type="Text" X="56" Y="14" Width="248" Height="30"
                  Text="Close these apps before continuing. To close BetterQuickLook, use Exit in the notification area." />
+        <Control Id="Logo" Type="Icon" X="16" Y="8" Width="30" Height="29" IconSize="32" FixedSize="yes" Text="SetupIcon" />
         <Control Id="Apps" Type="ListBox" X="16" Y="48" Width="288" Height="64" Property="FileInUseProcess" />
         <Control Id="Retry" Type="PushButton" X="128" Y="132" Width="56" Height="17" Text="Retry" Default="yes">
           <Publish Event="EndDialog" Value="Retry" />
@@ -93,7 +102,8 @@
       </Dialog>
       <!-- Windows Installer selects and positions the buttons for each error. -->
       <Dialog Id="SetupError" Width="320" Height="110" Title="BetterQuickLook Setup" ErrorDialog="yes">
-        <Control Id="ErrorText" Type="Text" X="16" Y="14" Width="288" Height="60" TabSkip="no" NoPrefix="yes" Text="Setup error" />
+        <Control Id="ErrorText" Type="Text" X="56" Y="14" Width="248" Height="60" TabSkip="no" NoPrefix="yes" Text="Setup error" />
+        <Control Id="Logo" Type="Icon" X="16" Y="8" Width="30" Height="29" IconSize="32" FixedSize="yes" Text="SetupIcon" />
         <Control Id="A" Type="PushButton" X="132" Y="82" Width="56" Height="17" Text="Abort" TabSkip="yes">
           <Publish Event="EndDialog" Value="ErrorAbort" />
         </Control>

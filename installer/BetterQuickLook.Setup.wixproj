@@ -2,6 +2,6 @@
   <PropertyGroup>
     <InstallerPlatform>x86</InstallerPlatform>
     <OutputName>BetterQuickLook-Setup</OutputName>
-    <DefineConstants>AppVersion=$(AppVersion);AppExe=$(MSBuildProjectDirectory)\obj\payload\BetterQuickLook.exe</DefineConstants>
+    <DefineConstants>AppVersion=$(AppVersion);AppExe=$(MSBuildProjectDirectory)\obj\payload\BetterQuickLook.exe;AppIcon=$(MSBuildProjectDirectory)\..\src\Assets\BetterQuickLook.ico</DefineConstants>
   </PropertyGroup>
 </Project>

@@ -6,6 +6,8 @@ namespace BetterQuickLook;
 
 public partial class App : System.Windows.Application
 {
+    internal static readonly Uri IconUri = new("pack://application:,,,/BetterQuickLook;component/Assets/BetterQuickLook.ico");
+
     private Mutex? _singleInstance;
     private bool _ownsMutex;
     private WinForms.NotifyIcon? _tray;
@@ -25,9 +27,10 @@ public partial class App : System.Windows.Application
             Shutdown();
             return;
         }
+        using var iconStream = GetResourceStream(IconUri).Stream;
         _tray = new WinForms.NotifyIcon
         {
-            Icon = SystemIcons.Application,
+            Icon = new Icon(iconStream, WinForms.SystemInformation.SmallIconSize),
             Text = "BetterQuickLook — Space on Desktop or in File Explorer",
             Visible = true,
             ContextMenuStrip = new WinForms.ContextMenuStrip()
@@ -92,8 +95,10 @@ public partial class App : System.Windows.Application
         _singleInstance?.Dispose();
         if (_tray is not null)
         {
+            var icon = _tray.Icon;
             _tray.Visible = false;
             _tray.Dispose();
+            icon?.Dispose();
         }
         base.OnExit(e);
     }

@@ -7,9 +7,14 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>BetterQuickLook</AssemblyName>
-    <Version>1.0.4</Version>
+    <Version>1.0.5</Version>
+    <ApplicationIcon>Assets\BetterQuickLook.ico</ApplicationIcon>
     <!-- Cache bundled assemblies on disk so Windows can map them, rather than
          retaining decompressed assembly copies in the tray process. -->
     <IncludeAllContentForSelfExtract Condition="'$(PublishSingleFile)' == 'true'">true</IncludeAllContentForSelfExtract>
   </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="$(ApplicationIcon)" />
+    <EmbeddedResource Include="Assets\Lucide-Zap-LICENSE.txt" />
+  </ItemGroup>
 </Project>

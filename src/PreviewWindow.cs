@@ -65,6 +65,7 @@ internal sealed partial class PreviewWindow : Window
             Source = new Uri("/BetterQuickLook;component/PreviewControls.xaml", UriKind.Relative)
         });
         Title = "BetterQuickLook";
+        Icon = BitmapFrame.Create(App.IconUri);
         Width = 900;
         Height = 650;
         MinWidth = 420;
